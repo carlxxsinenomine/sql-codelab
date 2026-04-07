@@ -178,7 +178,7 @@ class SQLParser {
     return{T:'INSERT',name,cols,rows};
   }
 
-  drop_(){this.expect('DROP');this.expect('TABLE');this.try_('IF');this.try_('EXISTS');return{T:'DROP',name:this.next().v};}
+  drop_(){this.expect('DROP');this.expect('TABLE');this.try_('IF');this.try_('EXISTS');const names=[];do{names.push(this.next().v);}while(this.try_(','));return{T:'DROP',names:names};}
 
   delete_(){
     this.expect('DELETE');this.expect('FROM');const name=this.next().v;
@@ -354,7 +354,7 @@ class Database {
     }
     return{kind:'msg',msg:`✓ ${ast.rows.length} row(s) inserted into '${ast.name}'`};
   }
-  drop(ast){const k=Object.keys(this.tables).find(k=>k.toLowerCase()===ast.name.toLowerCase());if(!k)throw new Error(`Table '${ast.name}' not found`);delete this.tables[k];return{kind:'msg',msg:`✓ Table '${ast.name}' dropped`};}
+  drop(ast){const names=ast.names||[ast.name];const dropped=[];for(const name of names){const k=Object.keys(this.tables).find(k=>k.toLowerCase()===name.toLowerCase());if(k){delete this.tables[k];dropped.push(name);}}return{kind:'msg',msg:`✓ Table(s) '${dropped.join(', ')}' dropped`};};
   del(ast){
     const tbl=this._tbl(ast.name);const before=tbl.rows.length;
     if(ast.where){tbl.rows=tbl.rows.filter(r=>{const o={};tbl.cols.forEach((c,i)=>o[c]=r[i]);return!this.ev(ast.where,o);});}else tbl.rows=[];
