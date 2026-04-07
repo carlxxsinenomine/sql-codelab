@@ -639,7 +639,7 @@ export default function SQLCodelab() {
     const LINE_H = 13 * 1.65;
     const CHAR_W = 7.82;
     const PAD_TOP = 12;
-    const PAD_LEFT = 52;
+    const PAD_LEFT = 60;
     const top = PAD_TOP + (lineIdx + 1) * LINE_H - (ta.scrollTop || 0);
     const left = PAD_LEFT + colInLine * CHAR_W;
     setSuggestions(matches);
@@ -696,6 +696,101 @@ export default function SQLCodelab() {
       const nv = sql.slice(0, s) + '  ' + sql.slice(en);
       setSQL(nv);
       requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s + 2; });
+    }
+    // Auto-indentation on Enter
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const ta = taRef.current;
+      const s = ta.selectionStart, en = ta.selectionEnd;
+      // Get the current line
+      const beforeCursor = sql.slice(0, s);
+      const lines = beforeCursor.split('\n');
+      const currentLine = lines[lines.length - 1];
+      // Calculate indentation of current line
+      const indentMatch = currentLine.match(/^(\s*)/);
+      const currentIndent = indentMatch ? indentMatch[1] : '';
+      // Check if current line has unmatched opening brackets
+      let openCount = 0, closeCount = 0;
+      for (const ch of currentLine) {
+        if (['(', '[', '{'].includes(ch)) openCount++;
+        if ([')', ']', '}'].includes(ch)) closeCount++;
+      }
+      const extraIndent = openCount > closeCount ? '  ' : '';
+      const newIndent = currentIndent + extraIndent;
+      const selectedText = sql.slice(s, en);
+      const nv = sql.slice(0, s) + '\n' + newIndent + sql.slice(en);
+      setSQL(nv);
+      requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s + 1 + newIndent.length; });
+    }
+    // Smart bracket deletion: delete matching closing bracket when opening bracket is deleted
+    const closingMap = { '(': ')', '[': ']', '{': '}' };
+    const reverseMap = { ')': '(', ']': '[', '}': '{' };
+    // Helper to find matching closing bracket
+    const findMatchingClosing = (text, openPos, openBracket) => {
+      const closeBracket = closingMap[openBracket];
+      let depth = 1;
+      for (let i = openPos + 1; i < text.length; i++) {
+        if (text[i] === openBracket) depth++;
+        if (text[i] === closeBracket) {
+          depth--;
+          if (depth === 0) return i;
+        }
+      }
+      return -1;
+    };
+    // Backspace: delete opening bracket and matching closing bracket
+    if (e.key === 'Backspace') {
+      const ta = taRef.current;
+      const s = ta.selectionStart;
+      const charBeforeCursor = sql[s - 1];
+      if (['(', '[', '{'].includes(charBeforeCursor)) {
+        const matchingPos = findMatchingClosing(sql, s - 1, charBeforeCursor);
+        if (matchingPos !== -1) {
+          e.preventDefault();
+          const nv = sql.slice(0, s - 1) + sql.slice(s, matchingPos) + sql.slice(matchingPos + 1);
+          setSQL(nv);
+          requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s - 1; });
+          return;
+        }
+      }
+    }
+    // Delete: delete opening bracket and matching closing bracket
+    if (e.key === 'Delete') {
+      const ta = taRef.current;
+      const s = ta.selectionStart;
+      const charAtCursor = sql[s];
+      if (['(', '[', '{'].includes(charAtCursor)) {
+        const matchingPos = findMatchingClosing(sql, s, charAtCursor);
+        if (matchingPos !== -1) {
+          e.preventDefault();
+          const nv = sql.slice(0, s) + sql.slice(s + 1, matchingPos) + sql.slice(matchingPos + 1);
+          setSQL(nv);
+          requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s; });
+          return;
+        }
+      }
+    }
+    // Smart bracket handling: exit if cursor is before matching closing bracket
+    if ([')' , ']', '}'].includes(e.key)) {
+      const ta = taRef.current;
+      const s = ta.selectionStart;
+      // If next char is the closing bracket we're typing, skip insertion and move cursor forward
+      if (sql[s] === e.key) {
+        e.preventDefault();
+        requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s + 1; });
+        return;
+      }
+    }
+    // Auto-close brackets (opening brackets)
+    if (['(', '[', '{'].includes(e.key)) {
+      e.preventDefault();
+      const ta = taRef.current;
+      const s = ta.selectionStart, en = ta.selectionEnd;
+      const closing = closingMap[e.key];
+      const selectedText = sql.slice(s, en);
+      const nv = sql.slice(0, s) + e.key + selectedText + closing + sql.slice(en);
+      setSQL(nv);
+      requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s + e.key.length; });
     }
   }, [sql, suggestions, suggSel, suggAnchor]);
 
@@ -756,7 +851,7 @@ export default function SQLCodelab() {
 
   const chartConfig = useMemo(() => sortedResult?getChartConfig(sortedResult.cols,sortedResult.rows):null, [sortedResult]);
 
-  const edS = {fontFamily:MONO,fontSize:'13px',lineHeight:'1.65',padding:'12px 16px 12px 52px',tabSize:2,whiteSpace:'pre-wrap',wordBreak:'break-all',textAlign:'left'};
+  const edS = {fontFamily:MONO,fontSize:'13px',lineHeight:'1.65',padding:'12px 16px 12px 60px',tabSize:2,whiteSpace:'pre-wrap',wordBreak:'break-all',textAlign:'left'};
 
   function copySnippet(sql, id) {
     navigator.clipboard.writeText(sql).catch(()=>{});
@@ -906,7 +1001,7 @@ export default function SQLCodelab() {
             <div style={{flex: resultsOpen ? `0 0 ${100 - resultsHeight}%` : '1', position:'relative',overflow:'hidden',borderBottom: resultsOpen ? `1px solid ${BORDER}` : 'none'}}>
               {/* Line numbers */}
               <div ref={lnRef} style={{position:'absolute',left:0,top:0,bottom:0,width:44,background:'#0D1117',borderRight:`1px solid ${BORDER}`,overflowY:'hidden',pointerEvents:'none',zIndex:2}}>
-                <div style={{...edS,padding:'12px 8px 12px 0',color:'#3D4451',textAlign:'right',userSelect:'none',fontSize:'12px'}}>
+                <div style={{...edS,padding:'12px 8px 12px 0',color:'#3D4451',textAlign:'right',userSelect:'none',fontSize:'13px'}}>
                   {Array.from({length:lineCount},(_,i)=>`${i+1}\n`).join('')}
                 </div>
               </div>
