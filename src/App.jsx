@@ -87,7 +87,7 @@ class SQLParser {
     if(this.uv()==='ORDER'){this.next();this.expect('BY');orderBy=[];
       do{const e=this.expr();const d=this.uv()==='DESC'?(this.next(),'DESC'):this.try_('ASC')?'ASC':'ASC';orderBy.push({e,d});}while(this.try_(','));}
     let limit=null,offset=null;
-    if(this.try_('LIMIT')){limit=+this.next().v;if(this.try_('OFFSET'))offset=+this.next().v;}
+    if(this.try_('LIMIT')){const n1=+this.next().v;if(this.try_(',')){offset=n1;limit=+this.next().v;}else{limit=n1;if(this.try_('OFFSET'))offset=+this.next().v;}}
     return{T:'SELECT',distinct,cols,from,joins,where,groupBy,having,orderBy,limit,offset};
   }
 
@@ -697,8 +697,8 @@ export default function SQLCodelab() {
       setSQL(nv);
       requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s + 2; });
     }
-    // Auto-indentation on Enter
-    if (e.key === 'Enter') {
+    // Auto-indentation on Enter (skip if Ctrl/Meta held — that's the Run shortcut)
+    if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       const ta = taRef.current;
       const s = ta.selectionStart, en = ta.selectionEnd;
