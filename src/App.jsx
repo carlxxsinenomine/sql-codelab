@@ -851,7 +851,7 @@ export default function SQLCodelab() {
 
   const chartConfig = useMemo(() => sortedResult?getChartConfig(sortedResult.cols,sortedResult.rows):null, [sortedResult]);
 
-  const edS = {fontFamily:MONO,fontSize:'13px',lineHeight:'1.65',padding:'12px 16px 12px 60px',tabSize:2,whiteSpace:'pre-wrap',wordBreak:'break-all',textAlign:'left'};
+  const edS = {fontFamily:MONO,fontSize:'13px',lineHeight:'1.65',padding:'12px 16px 12px 60px',tabSize:2,whiteSpace:'pre-wrap',wordBreak:'break-all',textAlign:'left', letterSpacing:'normal'};
 
   function copySnippet(sql, id) {
     navigator.clipboard.writeText(sql).catch(()=>{});
