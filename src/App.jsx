@@ -458,9 +458,17 @@ const COOKBOOK = [
 ];
 
 /* ══════════════════════════════════════════════════════════════
+   THEME — declared here so ERDiagram & all components can use them
+══════════════════════════════════════════════════════════════ */
+const MONO = "'JetBrains Mono','Cascadia Code','Fira Code','Consolas','Courier New',monospace";
+const SANS = "'Segoe UI','SF Pro Text',system-ui,sans-serif";
+const BG='#1E1E1E',SURF='#252526',SURF2='#2D2D30',BORDER='#3C3C3C',TEXT='#D4D4D4',MUTED='#858585';
+const AMBER='#CE9178',GREEN='#4EC9B0',RED='#F44747',BLUE='#007ACC',ACCENT='#569CD6';
+
+/* ══════════════════════════════════════════════════════════════
    CHART HELPER
 ══════════════════════════════════════════════════════════════ */
-const CHART_COLORS = ['#F59E0B','#3B82F6','#10B981','#EF4444','#8B5CF6','#EC4899'];
+const CHART_COLORS = [ACCENT,'#10B981',AMBER,'#EF4444','#8B5CF6','#EC4899'];
 function getChartConfig(cols, rows) {
   if(!cols?.length||!rows?.length)return null;
   const numIdx=[],strIdx=[];
@@ -632,19 +640,19 @@ function ERDiagram({ schema, schemaVer }) {
         return (
           <div key={tname + schemaVer} style={{
             position: 'absolute', left: pos.x, top: pos.y, width: TABLE_W, zIndex: isDragging ? 100 : 1,
-            borderRadius: 8, overflow: 'hidden', border: `1.5px solid ${isDragging ? AMBER : '#30363D'}`,
-            boxShadow: isDragging ? `0 8px 32px rgba(0,0,0,0.7), 0 0 0 2px ${AMBER}55` : '0 4px 20px rgba(0,0,0,0.5)',
+            borderRadius: 4, overflow: 'hidden', border: `1px solid ${isDragging ? ACCENT : BORDER}`,
+            boxShadow: isDragging ? `0 8px 24px rgba(0,0,0,0.6)` : '0 2px 8px rgba(0,0,0,0.4)',
             transition: isDragging ? 'none' : 'box-shadow 0.2s',
           }}>
             {/* Header */}
             <div onMouseDown={e => onMouseDown(e, tname)}
               style={{ background: '#37373D', padding: '0 12px', height: HEADER_H, display: 'flex', alignItems: 'center', gap: 8, cursor: 'grab', userSelect: 'none', borderBottom: `1px solid ${BORDER}` }}>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{flexShrink:0}}>
-                <rect x="1" y="3" width="14" height="10" rx="1" stroke={ACCENT} strokeWidth="1.5" fill="none"/>
-                <line x1="1" y1="7" x2="15" y2="7" stroke={ACCENT} strokeWidth="1"/>
-                <line x1="5" y1="3" x2="5" y2="13" stroke={ACCENT} strokeWidth="1"/>
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style={{flexShrink:0}}>
+                <rect x="1" y="2" width="14" height="12" rx="1" stroke={ACCENT} strokeWidth="1.4" fill="none"/>
+                <line x1="1" y1="6" x2="15" y2="6" stroke={ACCENT} strokeWidth="1"/>
+                <line x1="5" y1="2" x2="5" y2="14" stroke={ACCENT} strokeWidth="1"/>
               </svg>
-              <span style={{ fontSize: 12, fontWeight: 600, color: TEXT, fontFamily: MONO, letterSpacing: '0.02em' }}>{tname}</span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: TEXT, fontFamily: MONO }}>{tname}</span>
               <span style={{ marginLeft: 'auto', fontSize: 10, color: MUTED, fontFamily: MONO }}>{tbl.rows.length} rows</span>
             </div>
             {/* Column rows */}
@@ -656,40 +664,40 @@ function ERDiagram({ schema, schemaVer }) {
               return (
                 <div key={col} style={{
                   display: 'flex', alignItems: 'center', gap: 7, padding: `0 10px`,
-                  height: COL_ROW_H, background: ci % 2 === 0 ? '#161B22' : '#1C2128',
-                  borderTop: '1px solid #21262D',
+                  height: COL_ROW_H, background: ci % 2 === 0 ? SURF : SURF2,
+                  borderTop: `1px solid ${BORDER}`,
                 }}>
-                  <span style={{ fontSize: 10, color: colColor, lineHeight: 1, flexShrink: 0, fontFamily: MONO, fontWeight: 700 }}>
-                    {isPK ? 'PK' : isFK ? 'FK' : '  '}
+                  <span style={{ fontSize: 9, color: colColor, lineHeight: 1, flexShrink: 0, fontFamily: MONO, fontWeight: 700, minWidth: 16 }}>
+                    {isPK ? 'PK' : isFK ? 'FK' : ''}
                   </span>
-                  <span style={{ fontSize: 11, fontFamily: MONO, color: isPK ? AMBER : isFK ? (relColors[col] || '#3B82F6') : TEXT, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{col}</span>
+                  <span style={{ fontSize: 11, fontFamily: MONO, color: isPK ? ACCENT : isFK ? (relColors[col] || ACCENT) : TEXT, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{col}</span>
                   <span style={{ fontSize: 10, fontFamily: MONO, color: MUTED, flexShrink: 0 }}>{colType}</span>
                 </div>
               );
             })}
-            <div style={{ height: TABLE_PAD_B, background: '#161B22' }}/>
+            <div style={{ height: TABLE_PAD_B, background: SURF }}/>
           </div>
         );
       })}
 
       {/* Legend */}
-      <div style={{ position: 'fixed', bottom: 32, right: 24, background: SURF2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '10px 14px', zIndex: 200, minWidth: 160 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Legend</div>
-        {[{ icon: 'PK', label: 'Primary Key', color: AMBER }, { icon: 'FK', label: 'Foreign Key', color: ACCENT }, { icon: '  ', label: 'Column', color: MUTED }].map(l => (
+      <div style={{ position: 'fixed', bottom: 32, right: 24, background: SURF2, border: `1px solid ${BORDER}`, borderRadius: 4, padding: '10px 14px', zIndex: 200, minWidth: 160 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8, fontFamily: SANS }}>Legend</div>
+        {[{ label: 'Primary Key', color: ACCENT, tag: 'PK' }, { label: 'Foreign Key', color: AMBER, tag: 'FK' }, { label: 'Column', color: MUTED, tag: '' }].map(l => (
           <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
-            <span style={{ fontSize: 10, fontFamily: MONO, fontWeight: 700, color: l.color, minWidth: 16 }}>{l.icon}</span>
+            <span style={{ fontSize: 9, fontFamily: MONO, fontWeight: 700, color: l.color, minWidth: 18 }}>{l.tag}</span>
             <span style={{ fontSize: 11, fontFamily: MONO, color: l.color }}>{l.label}</span>
           </div>
         ))}
         <div style={{ borderTop: `1px solid ${BORDER}`, marginTop: 8, paddingTop: 8 }}>
           {relationships.map((rel, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <div style={{ width: 20, height: 2.5, background: rel.color, borderRadius: 2, flexShrink: 0 }}/>
+              <div style={{ width: 18, height: 2, background: rel.color, borderRadius: 1, flexShrink: 0 }}/>
               <span style={{ fontSize: 10, fontFamily: MONO, color: TEXT }}>{rel.fromTable}.{rel.fromCol} → {rel.toTable}</span>
             </div>
           ))}
         </div>
-        <div style={{ marginTop: 6, fontSize: 10, color: MUTED }}>Drag tables to reposition</div>
+        <div style={{ marginTop: 6, fontSize: 10, color: MUTED, fontFamily: SANS }}>Drag tables to reposition</div>
       </div>
     </div>
   );
@@ -706,8 +714,271 @@ function makeFolder(name, seeded = false) {
 }
 
 /* ══════════════════════════════════════════════════════════════
-   MAIN COMPONENT
+   TABLE BUILDER COMPONENT
 ══════════════════════════════════════════════════════════════ */
+const COL_TYPES = ['INT','BIGINT','SMALLINT','TINYINT','DECIMAL','FLOAT','DOUBLE','VARCHAR','CHAR','TEXT','MEDIUMTEXT','LONGTEXT','BLOB','DATE','DATETIME','TIMESTAMP','TIME','BOOLEAN','JSON','UUID'];
+const COL_DEFAULTS = ['None','NULL','CURRENT_TIMESTAMP','0','1','""','Custom...'];
+const COL_INDEXES = ['---','PRIMARY','UNIQUE','INDEX','FULLTEXT'];
+
+function makeCol() {
+  return { id: Date.now()+Math.random(), name:'', type:'VARCHAR', length:'255', defaultVal:'None', nullable:true, index:'---', autoInc:false, comment:'' };
+}
+
+function TableBuilder({ onRunSQL, onSendToEditor }) {
+  const [tableName, setTableName] = useState('new_table');
+  const [cols, setCols] = useState([makeCol(), makeCol(), makeCol()]);
+  const [ifNotExists, setIfNotExists] = useState(true);
+  const [customDefaults, setCustomDefaults] = useState({});
+  const [previewOpen, setPreviewOpen] = useState(true);
+
+  function updateCol(id, patch) {
+    setCols(cs => cs.map(c => c.id === id ? {...c,...patch} : c));
+  }
+  function addCol() { setCols(cs => [...cs, makeCol()]); }
+  function removeCol(id) { setCols(cs => cs.filter(c => c.id !== id)); }
+  function moveCol(id, dir) {
+    setCols(cs => {
+      const i = cs.findIndex(c => c.id === id);
+      const j = i + dir;
+      if (j < 0 || j >= cs.length) return cs;
+      const next = [...cs];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+
+  function needsLength(type) { return ['VARCHAR','CHAR','DECIMAL','FLOAT','DOUBLE'].includes(type); }
+
+  function buildSQL() {
+    const name = tableName.trim() || 'new_table';
+    const ine = ifNotExists ? 'IF NOT EXISTS ' : '';
+    const colDefs = cols.map(c => {
+      if (!c.name.trim()) return null;
+      let def = `  \`${c.name.trim()}\` ${c.type}`;
+      if (needsLength(c.type) && c.length) def += `(${c.length})`;
+      if (c.autoInc) def += ' AUTO_INCREMENT';
+      if (!c.nullable) def += ' NOT NULL';
+      const dv = c.defaultVal === 'Custom...' ? (customDefaults[c.id]||'') : c.defaultVal;
+      if (dv && dv !== 'None') def += ` DEFAULT ${dv === 'NULL' ? 'NULL' : dv === 'CURRENT_TIMESTAMP' ? 'CURRENT_TIMESTAMP' : `'${dv}'`}`;
+      if (c.comment.trim()) def += ` COMMENT '${c.comment.trim()}'`;
+      return def;
+    }).filter(Boolean);
+
+    const constraints = [];
+    const pkCols = cols.filter(c => c.index === 'PRIMARY' && c.name.trim());
+    if (pkCols.length) constraints.push(`  PRIMARY KEY (${pkCols.map(c=>`\`${c.name}\``).join(', ')})`);
+    cols.filter(c => c.index === 'UNIQUE' && c.name.trim()).forEach(c => {
+      constraints.push(`  UNIQUE KEY \`uq_${c.name}\` (\`${c.name}\`)`);
+    });
+    cols.filter(c => c.index === 'INDEX' && c.name.trim()).forEach(c => {
+      constraints.push(`  INDEX \`idx_${c.name}\` (\`${c.name}\`)`);
+    });
+
+    const all = [...colDefs, ...constraints];
+    if (!all.length) return `-- Add column names to generate SQL`;
+    return `CREATE TABLE ${ine}\`${name}\` (\n${all.join(',\n')}\n);`;
+  }
+
+  const generatedSQL = buildSQL();
+
+  const inputStyle = {
+    background: SURF2, border: `1px solid ${BORDER}`, borderRadius: 2,
+    color: TEXT, fontFamily: MONO, fontSize: 11, padding: '3px 6px',
+    outline: 'none', width: '100%',
+  };
+  const selectStyle = { ...inputStyle, cursor: 'pointer', appearance: 'none', WebkitAppearance: 'none' };
+  const thStyle = {
+    padding: '6px 8px', fontSize: 10, fontWeight: 700, color: MUTED,
+    textTransform: 'uppercase', letterSpacing: '0.08em', textAlign: 'left',
+    borderBottom: `1px solid ${BORDER}`, whiteSpace: 'nowrap', fontFamily: SANS,
+    background: SURF2, userSelect: 'none',
+  };
+
+  return (
+    <div style={{display:'flex',flex:1,overflow:'hidden',flexDirection:'column'}}>
+      {/* Toolbar */}
+      <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 14px',borderBottom:`1px solid ${BORDER}`,background:SURF,flexShrink:0}}>
+        <span style={{fontSize:11,color:MUTED,fontFamily:SANS,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em'}}>Table Builder</span>
+        <div style={{display:'flex',alignItems:'center',gap:6,marginLeft:8}}>
+          <span style={{fontSize:11,color:MUTED,fontFamily:SANS}}>Table name:</span>
+          <input value={tableName} onChange={e=>setTableName(e.target.value)}
+            style={{...inputStyle, width:160, fontSize:12}}
+            placeholder="table_name" spellCheck={false}/>
+        </div>
+        <label style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:MUTED,fontFamily:SANS,cursor:'pointer',userSelect:'none'}}>
+          <input type="checkbox" checked={ifNotExists} onChange={e=>setIfNotExists(e.target.checked)} style={{accentColor:ACCENT}}/>
+          IF NOT EXISTS
+        </label>
+        <div style={{marginLeft:'auto',display:'flex',gap:6}}>
+          <button onClick={()=>setPreviewOpen(p=>!p)} className="btn-hover"
+            style={{padding:'4px 10px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer'}}>
+            {previewOpen ? 'Hide SQL' : 'Show SQL'}
+          </button>
+          <button onClick={()=>onSendToEditor(generatedSQL)} className="btn-hover"
+            style={{padding:'4px 10px',background:'transparent',border:`1px solid ${ACCENT}`,borderRadius:2,color:ACCENT,fontSize:11,fontFamily:SANS,cursor:'pointer'}}>
+            Send to Editor
+          </button>
+          <button onClick={()=>onRunSQL(generatedSQL)} className="btn-hover"
+            style={{padding:'4px 12px',background:BLUE,border:'none',borderRadius:2,color:'#fff',fontSize:11,fontFamily:SANS,cursor:'pointer',fontWeight:600}}>
+            ▶ Run
+          </button>
+        </div>
+      </div>
+
+      <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+        {/* Column Editor */}
+        <div style={{flex:1,overflowY:'auto',overflowX:'auto'}}>
+          {/* Add column button row */}
+          <div style={{padding:'8px 14px',borderBottom:`1px solid ${BORDER}`,display:'flex',alignItems:'center',gap:8}}>
+            <button onClick={addCol} className="btn-hover"
+              style={{padding:'4px 12px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer'}}>
+              + Add Column
+            </button>
+            <span style={{fontSize:11,color:MUTED,fontFamily:MONO}}>{cols.length} column{cols.length!==1?'s':''}</span>
+          </div>
+
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,fontFamily:MONO}}>
+            <thead>
+              <tr>
+                <th style={{...thStyle,width:28}}></th>
+                <th style={{...thStyle,minWidth:130}}>Name</th>
+                <th style={{...thStyle,width:120}}>Type</th>
+                <th style={{...thStyle,width:80}}>Length</th>
+                <th style={{...thStyle,width:130}}>Default</th>
+                <th style={{...thStyle,width:60,textAlign:'center'}}>Null</th>
+                <th style={{...thStyle,width:90}}>Index</th>
+                <th style={{...thStyle,width:60,textAlign:'center'}}>A_I</th>
+                <th style={{...thStyle,minWidth:140}}>Comment</th>
+                <th style={{...thStyle,width:56,textAlign:'center'}}>Move</th>
+                <th style={{...thStyle,width:36}}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {cols.map((col, ci) => (
+                <tr key={col.id} style={{borderBottom:`1px solid ${BORDER}22`, background: ci%2===0?'transparent':'rgba(255,255,255,0.02)'}}>
+                  {/* Row number */}
+                  <td style={{padding:'6px 8px',color:MUTED,fontSize:10,textAlign:'center',verticalAlign:'middle'}}>{ci+1}</td>
+
+                  {/* Name */}
+                  <td style={{padding:'4px 6px',verticalAlign:'middle'}}>
+                    <input value={col.name} onChange={e=>updateCol(col.id,{name:e.target.value})}
+                      style={inputStyle} placeholder={`column_${ci+1}`} spellCheck={false}/>
+                  </td>
+
+                  {/* Type */}
+                  <td style={{padding:'4px 6px',verticalAlign:'middle'}}>
+                    <div style={{position:'relative'}}>
+                      <select value={col.type} onChange={e=>updateCol(col.id,{type:e.target.value,length:needsLength(e.target.value)?col.length:''})}
+                        style={selectStyle}>
+                        {COL_TYPES.map(t=><option key={t} value={t}>{t}</option>)}
+                      </select>
+                      <span style={{position:'absolute',right:6,top:'50%',transform:'translateY(-50%)',color:MUTED,fontSize:9,pointerEvents:'none'}}>▾</span>
+                    </div>
+                  </td>
+
+                  {/* Length */}
+                  <td style={{padding:'4px 6px',verticalAlign:'middle'}}>
+                    {needsLength(col.type)
+                      ? <input value={col.length} onChange={e=>updateCol(col.id,{length:e.target.value})}
+                          style={inputStyle} placeholder="255" spellCheck={false}/>
+                      : <span style={{color:MUTED,fontSize:10,padding:'0 4px'}}>—</span>
+                    }
+                  </td>
+
+                  {/* Default */}
+                  <td style={{padding:'4px 6px',verticalAlign:'middle'}}>
+                    <div style={{display:'flex',flexDirection:'column',gap:2}}>
+                      <div style={{position:'relative'}}>
+                        <select value={col.defaultVal} onChange={e=>updateCol(col.id,{defaultVal:e.target.value})}
+                          style={selectStyle}>
+                          {COL_DEFAULTS.map(d=><option key={d} value={d}>{d}</option>)}
+                        </select>
+                        <span style={{position:'absolute',right:6,top:'50%',transform:'translateY(-50%)',color:MUTED,fontSize:9,pointerEvents:'none'}}>▾</span>
+                      </div>
+                      {col.defaultVal==='Custom...'&&(
+                        <input value={customDefaults[col.id]||''} onChange={e=>setCustomDefaults(d=>({...d,[col.id]:e.target.value}))}
+                          style={{...inputStyle,fontSize:10}} placeholder="value" spellCheck={false}/>
+                      )}
+                    </div>
+                  </td>
+
+                  {/* Nullable */}
+                  <td style={{padding:'4px 6px',textAlign:'center',verticalAlign:'middle'}}>
+                    <input type="checkbox" checked={col.nullable} onChange={e=>updateCol(col.id,{nullable:e.target.checked})}
+                      style={{accentColor:ACCENT,width:13,height:13,cursor:'pointer'}}/>
+                  </td>
+
+                  {/* Index */}
+                  <td style={{padding:'4px 6px',verticalAlign:'middle'}}>
+                    <div style={{position:'relative'}}>
+                      <select value={col.index} onChange={e=>updateCol(col.id,{index:e.target.value})}
+                        style={{...selectStyle,color:col.index!=='---'?ACCENT:MUTED}}>
+                        {COL_INDEXES.map(ix=><option key={ix} value={ix}>{ix}</option>)}
+                      </select>
+                      <span style={{position:'absolute',right:6,top:'50%',transform:'translateY(-50%)',color:MUTED,fontSize:9,pointerEvents:'none'}}>▾</span>
+                    </div>
+                  </td>
+
+                  {/* Auto increment */}
+                  <td style={{padding:'4px 6px',textAlign:'center',verticalAlign:'middle'}}>
+                    <input type="checkbox" checked={col.autoInc} onChange={e=>updateCol(col.id,{autoInc:e.target.checked})}
+                      disabled={!['INT','BIGINT','SMALLINT','TINYINT'].includes(col.type)}
+                      style={{accentColor:ACCENT,width:13,height:13,cursor:'pointer',opacity:['INT','BIGINT','SMALLINT','TINYINT'].includes(col.type)?1:0.25}}/>
+                  </td>
+
+                  {/* Comment */}
+                  <td style={{padding:'4px 6px',verticalAlign:'middle'}}>
+                    <input value={col.comment} onChange={e=>updateCol(col.id,{comment:e.target.value})}
+                      style={inputStyle} placeholder="optional comment" spellCheck={false}/>
+                  </td>
+
+                  {/* Move up/down */}
+                  <td style={{padding:'4px 2px',textAlign:'center',verticalAlign:'middle'}}>
+                    <button onClick={()=>moveCol(col.id,-1)} disabled={ci===0} className="btn-hover"
+                      style={{background:'none',border:'none',color:ci===0?BORDER:MUTED,cursor:ci===0?'default':'pointer',fontSize:11,padding:'1px 4px',lineHeight:1}}>▴</button>
+                    <button onClick={()=>moveCol(col.id,1)} disabled={ci===cols.length-1} className="btn-hover"
+                      style={{background:'none',border:'none',color:ci===cols.length-1?BORDER:MUTED,cursor:ci===cols.length-1?'default':'pointer',fontSize:11,padding:'1px 4px',lineHeight:1}}>▾</button>
+                  </td>
+
+                  {/* Remove */}
+                  <td style={{padding:'4px 6px',textAlign:'center',verticalAlign:'middle'}}>
+                    <button onClick={()=>removeCol(col.id)} className="btn-hover"
+                      style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:13,padding:'1px 4px',lineHeight:1}}>✕</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* Add row button at bottom */}
+          <div style={{padding:'10px 14px'}}>
+            <button onClick={addCol} className="btn-hover"
+              style={{padding:'5px 14px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer'}}>
+              + Add Column
+            </button>
+          </div>
+        </div>
+
+        {/* SQL Preview Panel */}
+        {previewOpen && (
+          <div style={{width:340,borderLeft:`1px solid ${BORDER}`,display:'flex',flexDirection:'column',flexShrink:0}}>
+            <div style={{padding:'6px 12px',borderBottom:`1px solid ${BORDER}`,background:SURF,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <span style={{fontSize:10,fontWeight:700,color:MUTED,textTransform:'uppercase',letterSpacing:'0.08em',fontFamily:SANS}}>SQL Preview</span>
+              <button onClick={()=>navigator.clipboard?.writeText(generatedSQL)} className="btn-hover"
+                style={{padding:'2px 8px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:10,fontFamily:SANS,cursor:'pointer'}}>
+                Copy
+              </button>
+            </div>
+            <pre style={{flex:1,margin:0,padding:'12px 14px',background:BG,fontSize:12,fontFamily:MONO,lineHeight:'1.7',overflowY:'auto',overflowX:'auto',color:TEXT,whiteSpace:'pre-wrap',wordBreak:'break-all'}}
+              dangerouslySetInnerHTML={{__html:highlight(generatedSQL)}}/>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 const DEFAULT_SQL = `-- SQL Codelab · Tables: employees, departments, products, orders
 -- Press Run or Ctrl+Enter to execute
 
@@ -719,11 +990,6 @@ FROM employees e
 JOIN departments d ON e.department_id = d.id
 WHERE e.salary > 80000
 ORDER BY e.salary DESC;`;
-
-const MONO = "'JetBrains Mono','Cascadia Code','Fira Code','Consolas','Courier New',monospace";
-const SANS = "'Segoe UI','SF Pro Text',system-ui,sans-serif";
-const BG='#1E1E1E',SURF='#252526',SURF2='#2D2D30',BORDER='#3C3C3C',TEXT='#D4D4D4',MUTED='#858585',AMBER='#CE9178',GREEN='#4EC9B0',RED='#F44747';
-const BLUE='#007ACC',ACCENT='#569CD6';
 
 let editorCounter = 1;
 function makeEditor(sql = DEFAULT_SQL) {
@@ -1151,49 +1417,49 @@ export default function SQLCodelab() {
         ::-webkit-scrollbar { width: 8px; height: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #424242; border-radius: 0; }
-        ::-webkit-scrollbar-thumb:hover { background: #4E4E4E; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
         textarea { outline: none; border: none; resize: none; }
-        .btn-hover:hover { filter: brightness(1.12); }
+        .btn-hover:hover { filter: brightness(1.15); }
         .row-hover:hover { background: rgba(255,255,255,0.04) !important; }
         .schema-row:hover { background: rgba(255,255,255,0.06); }
-        .snippet-card:hover { border-color: ${ACCENT}55 !important; }
+        .snippet-card:hover { border-color: ${ACCENT}66 !important; }
         .editor-tab:hover { background: ${BG} !important; }
+        .folder-row:hover .folder-actions { opacity: 1 !important; }
+        .folder-row:hover { background: rgba(255,255,255,0.06) !important; }
+        .tbl-row:hover { background: rgba(255,255,255,0.04) !important; }
         .resize-handle-x { cursor: col-resize; width: 4px; background: transparent; flex-shrink:0; transition: background 0.15s; }
         .resize-handle-x:hover, .resize-handle-x:active { background: ${ACCENT}88; }
         .resize-handle-y { cursor: row-resize; height: 4px; background: transparent; flex-shrink:0; transition: background 0.15s; }
         .resize-handle-y:hover, .resize-handle-y:active { background: ${ACCENT}88; }
       `}</style>
 
-      {/* ── HEADER ── */}
-      <header style={{display:'flex',alignItems:'center',gap:0,padding:'0',height:35,borderBottom:`1px solid ${BORDER}`,background:'#323233',flexShrink:0}}>
+      {/* ── HEADER / TITLE BAR ── */}
+      <header style={{display:'flex',alignItems:'center',height:35,borderBottom:`1px solid ${BORDER}`,background:'#323233',flexShrink:0}}>
         <div style={{display:'flex',alignItems:'center',gap:8,padding:'0 16px',height:'100%',borderRight:`1px solid ${BORDER}`,flexShrink:0}}>
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
             <rect x="1" y="2" width="6" height="12" rx="1" fill={ACCENT} opacity="0.9"/>
-            <rect x="9" y="2" width="6" height="5" rx="1" fill={ACCENT} opacity="0.6"/>
+            <rect x="9" y="2" width="6" height="5" rx="1" fill={ACCENT} opacity="0.55"/>
             <rect x="9" y="9" width="6" height="5" rx="1" fill={AMBER} opacity="0.9"/>
           </svg>
-          <span style={{fontFamily:MONO,fontSize:12,fontWeight:600,color:TEXT,letterSpacing:'0.02em'}}>SQL Codelab</span>
+          <span style={{fontFamily:MONO,fontSize:12,fontWeight:600,color:TEXT}}>SQL Codelab</span>
         </div>
         <div style={{display:'flex',height:'100%'}}>
-          {[{id:'editor',label:'Editor'},{id:'cookbook',label:'Cookbook'},{id:'erdiagram',label:'ER Diagram'}].map(t=>(
+          {[{id:'editor',label:'Editor'},{id:'tablebuilder',label:'Table Builder'},{id:'cookbook',label:'Cookbook'},{id:'erdiagram',label:'ER Diagram'}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} className="btn-hover" style={{
-              padding:'0 16px',border:'none',height:'100%',
+              padding:'0 16px', border:'none', height:'100%',
               background: tab===t.id ? BG : 'transparent',
               color: tab===t.id ? TEXT : MUTED,
-              fontFamily:SANS,fontSize:12,fontWeight:400,cursor:'pointer',
+              fontFamily:SANS, fontSize:12, fontWeight:400, cursor:'pointer',
               borderRight:`1px solid ${BORDER}`,
-              borderBottom: tab===t.id ? `1px solid ${BG}` : `1px solid ${BORDER}`,
-              position:'relative',top: tab===t.id ? 1 : 0,
-              letterSpacing:'0.01em',
+              borderTop: tab===t.id ? `1px solid ${ACCENT}` : '1px solid transparent',
+              position:'relative', top: tab===t.id ? 0 : 0,
             }}>
               {t.label}
             </button>
           ))}
         </div>
-        <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',paddingRight:16}}>
-          {lintErrors.length>0&&<span style={{fontSize:11,color:RED,fontFamily:MONO}}>
-            <span style={{marginRight:4}}>⚠</span>{lintErrors.length} problem{lintErrors.length>1?'s':''}
-          </span>}
+        <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',paddingRight:14}}>
+          {lintErrors.length>0&&<span style={{fontSize:11,color:RED,fontFamily:MONO}}>⚠ {lintErrors.length} problem{lintErrors.length>1?'s':''}</span>}
         </div>
       </header>
 
@@ -1201,62 +1467,47 @@ export default function SQLCodelab() {
         /* ── EDITOR TAB ── */
         <div style={{display:'flex',flex:1,overflow:'hidden'}}>
 
-          {/* VSCode Explorer Sidebar */}
+          {/* Sidebar */}
           {sidebarOpen && (
             <aside style={{width:sidebarWidth,borderRight:`1px solid ${BORDER}`,background:SURF,display:'flex',flexDirection:'column',overflow:'hidden',flexShrink:0}}>
-              <style>{`
-                .folder-row:hover .folder-actions { opacity: 1 !important; }
-                .folder-row:hover { background: rgba(255,255,255,0.06) !important; }
-                .tbl-row:hover { background: rgba(255,255,255,0.04) !important; }
-              `}</style>
 
               {/* Explorer header */}
-              <div style={{padding:'0 12px',height:35,display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0,borderBottom:`1px solid ${BORDER}`}}>
+              <div style={{padding:'0 8px 0 12px',height:35,display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0,borderBottom:`1px solid ${BORDER}`}}>
                 <span style={{fontSize:11,fontWeight:700,letterSpacing:'0.08em',color:MUTED,textTransform:'uppercase',userSelect:'none',fontFamily:SANS}}>Explorer</span>
                 <div style={{display:'flex',gap:2}}>
                   <button title="New Database" onClick={addFolder} className="btn-hover"
-                    style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:18,lineHeight:1,padding:'2px 5px',borderRadius:3,display:'flex',alignItems:'center',justifyContent:'center',width:22,height:22}}
-                  >+</button>
-                  <button onClick={()=>setSidebarOpen(false)} title="Close" className="btn-hover"
-                    style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:14,lineHeight:1,padding:'2px 4px',borderRadius:3,display:'flex',alignItems:'center',justifyContent:'center',width:22,height:22}}>✕</button>
+                    style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:17,lineHeight:'1',padding:'2px 4px',borderRadius:3}}>+</button>
+                  <button onClick={()=>setSidebarOpen(false)} title="Close Explorer" className="btn-hover"
+                    style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:13,lineHeight:'1',padding:'2px 4px',borderRadius:3}}>✕</button>
                 </div>
               </div>
 
               {/* Tree scroll area */}
               <div style={{overflowY:'auto',flex:1}}>
-
-                {/* Root workspace row */}
-                <div style={{display:'flex',alignItems:'center',gap:4,padding:'6px 10px 4px 8px',userSelect:'none',cursor:'default'}}>
+                <div style={{display:'flex',alignItems:'center',gap:4,padding:'6px 10px 4px 8px',userSelect:'none'}}>
                   <span style={{fontSize:10,color:MUTED,fontWeight:700}}>▾</span>
                   <span style={{fontSize:11,fontWeight:700,color:MUTED,textTransform:'uppercase',letterSpacing:'0.08em',fontFamily:SANS}}>SQL-CODELAB</span>
                 </div>
 
-                {/* Folder list */}
                 {foldersRef.current.map(folder => {
                   const isActive = folder.id === activeFolderId;
                   const isExpanded = expandedFolderIds.has(folder.id);
                   const folderTables = Object.entries(folder.db?.tables || {});
                   return (
                     <div key={folder.id + '-' + folderVer}>
-                      {/* Folder row */}
                       <div className="folder-row" onClick={() => openFolder(folder.id)}
-                        style={{display:'flex',alignItems:'center',gap:0,padding:'3px 6px 3px 16px',cursor:'pointer',userSelect:'none',
+                        style={{display:'flex',alignItems:'center',gap:0,padding:'3px 6px 3px 14px',cursor:'pointer',userSelect:'none',
                           borderLeft:`2px solid ${isActive ? ACCENT : 'transparent'}`,
                           background: isActive ? `${ACCENT}15` : 'transparent',
-                          position:'relative',
-                        }}>
-                        {/* Expand chevron */}
+                          position:'relative'}}>
                         <span onClick={e=>toggleFolderExpand(folder.id,e)}
-                          style={{fontSize:9,color:MUTED,width:14,flexShrink:0,transition:'transform 0.1s',display:'inline-block',
-                            transform:isExpanded?'rotate(90deg)':'none',textAlign:'center'}}>›</span>
-                        {/* Folder icon - VSCode style SVG */}
-                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{flexShrink:0,marginRight:4}}>
-                          {isActive||isExpanded
-                            ? <><path d="M1 4a1 1 0 011-1h4.5l1.5 1.5H14a1 1 0 011 1v6a1 1 0 01-1 1H2a1 1 0 01-1-1V4z" fill={AMBER} opacity="0.8"/><path d="M1 6h14" stroke={AMBER} strokeWidth="0.5" opacity="0.4"/></>
-                            : <><path d="M1 4a1 1 0 011-1h4.5l1.5 1.5H14a1 1 0 011 1v6a1 1 0 01-1 1H2a1 1 0 01-1-1V4z" fill={MUTED} opacity="0.5"/></>
-                          }
+                          style={{fontSize:10,color:MUTED,width:14,flexShrink:0,display:'inline-block',
+                            transform:isExpanded?'rotate(90deg)':'none',textAlign:'center',transition:'transform 0.1s'}}>›</span>
+                        {/* Folder icon — simple SVG, no Fragment */}
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{flexShrink:0,marginRight:5}}>
+                          <path d="M1 4a1 1 0 011-1h4.5l1.5 1.5H14a1 1 0 011 1v6a1 1 0 01-1 1H2a1 1 0 01-1-1V4z"
+                            fill={isActive || isExpanded ? ACCENT : MUTED} opacity={isActive || isExpanded ? '0.7' : '0.45'}/>
                         </svg>
-                        {/* Name or rename input */}
                         {renamingFolderId === folder.id ? (
                           <input autoFocus value={folderRenameVal}
                             onChange={e=>setFolderRenameVal(e.target.value)}
@@ -1270,10 +1521,9 @@ export default function SQLCodelab() {
                             {folder.name}
                           </span>
                         )}
-                        {/* Hover actions */}
                         <div className="folder-actions" style={{display:'flex',gap:2,opacity:0,transition:'opacity 0.1s',flexShrink:0,marginLeft:2}}>
                           <button title="Rename" onClick={e=>startFolderRename(folder,e)} className="btn-hover"
-                            style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:13,padding:'0 3px',lineHeight:1}}>✎</button>
+                            style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:12,padding:'0 3px',lineHeight:1}}>✎</button>
                           {foldersRef.current.length > 1 && (
                             <button title="Delete" onClick={e=>deleteFolder(folder.id,e)} className="btn-hover"
                               style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:11,padding:'0 3px',lineHeight:1}}>✕</button>
@@ -1281,7 +1531,6 @@ export default function SQLCodelab() {
                         </div>
                       </div>
 
-                      {/* Tables under folder */}
                       {isExpanded && (
                         <div>
                           {folderTables.length === 0 ? (
@@ -1290,11 +1539,10 @@ export default function SQLCodelab() {
                             </div>
                           ) : folderTables.map(([tname, tbl]) => (
                             <div key={tname + schemaVer}>
-                              {/* Table row */}
                               <div className="tbl-row schema-row"
                                 onClick={()=>setExpandedTbls(s=>{const n=new Set(s);n.has(tname)?n.delete(tname):n.add(tname);return n;})}
                                 style={{display:'flex',alignItems:'center',gap:5,padding:'3px 10px 3px 30px',cursor:'pointer',userSelect:'none'}}>
-                                <span style={{fontSize:9,color:MUTED,transition:'transform 0.1s',display:'inline-block',transform:expandedTbls.has(tname)?'rotate(90deg)':'none'}}>›</span>
+                                <span style={{fontSize:10,color:MUTED,display:'inline-block',transform:expandedTbls.has(tname)?'rotate(90deg)':'none',transition:'transform 0.1s'}}>›</span>
                                 <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style={{flexShrink:0}}>
                                   <rect x="1" y="2" width="14" height="12" rx="1" stroke={MUTED} strokeWidth="1.3" fill="none"/>
                                   <line x1="1" y1="6" x2="15" y2="6" stroke={MUTED} strokeWidth="1"/>
@@ -1303,9 +1551,8 @@ export default function SQLCodelab() {
                                 <span style={{fontSize:11,fontFamily:MONO,color:TEXT,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{tname}</span>
                                 <span style={{fontSize:9,color:MUTED,fontFamily:MONO,flexShrink:0}}>{tbl.rows.length}</span>
                               </div>
-                              {/* Column rows */}
                               {expandedTbls.has(tname) && tbl.cols.map(col=>(
-                                <div key={col} style={{padding:'2px 10px 2px 50px',fontSize:11,fontFamily:MONO,color:MUTED,display:'flex',alignItems:'center',gap:6}}>
+                                <div key={col} style={{padding:'2px 10px 2px 50px',fontSize:11,fontFamily:MONO,color:MUTED,display:'flex',alignItems:'center',gap:5}}>
                                   <span style={{color:ACCENT,fontSize:9,flexShrink:0}}>─</span>
                                   <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{col}</span>
                                 </div>
@@ -1319,10 +1566,9 @@ export default function SQLCodelab() {
                 })}
               </div>
 
-              {/* Bottom actions */}
-              <div style={{borderTop:`1px solid ${BORDER}`,padding:'8px 10px',display:'flex',flexDirection:'column',gap:6}}>
+              <div style={{borderTop:`1px solid ${BORDER}`,padding:'8px 10px'}}>
                 <button onClick={()=>{activeDb?.seed();setSchemaVer(v=>v+1);updateActive({results:null,execErr:null});}} className="btn-hover"
-                  style={{width:'100%',padding:'5px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:3,color:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer',letterSpacing:'0.01em'}}>
+                  style={{width:'100%',padding:'5px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer'}}>
                   Reset Active DB
                 </button>
               </div>
@@ -1340,19 +1586,20 @@ export default function SQLCodelab() {
             {/* Editor Tabs + Toolbar */}
             <div style={{display:'flex',flexDirection:'column',background:SURF,borderBottom:`1px solid ${BORDER}`,flexShrink:0}}>
               {/* Tab bar */}
-              <div style={{display:'flex',alignItems:'center',overflowX:'auto',borderBottom:`1px solid ${BORDER}`,minHeight:35,background:SURF}}>
+              <div style={{display:'flex',alignItems:'stretch',overflowX:'auto',borderBottom:`1px solid ${BORDER}`,height:35,background:SURF}}>
                 {!sidebarOpen && (
                   <button onClick={()=>setSidebarOpen(true)} title="Show Explorer" className="btn-hover"
-                    style={{padding:'0 10px',height:35,background:'none',border:'none',borderRight:`1px solid ${BORDER}`,color:MUTED,cursor:'pointer',fontSize:14,flexShrink:0,letterSpacing:'0.05em'}}>
+                    style={{padding:'0 12px',background:'none',border:'none',borderRight:`1px solid ${BORDER}`,color:MUTED,cursor:'pointer',fontSize:15,flexShrink:0}}>
                     ☰
                   </button>
                 )}
                 {editors.map(ed=>(
                   <div key={ed.id} className="editor-tab" onClick={()=>setActiveId(ed.id)}
-                    style={{display:'flex',alignItems:'center',gap:6,padding:'0 12px',height:35,cursor:'pointer',borderRight:`1px solid ${BORDER}`,flexShrink:0,
-                      background:ed.id===activeId?BG:SURF,
+                    style={{display:'flex',alignItems:'center',gap:6,padding:'0 12px',cursor:'pointer',
+                      borderRight:`1px solid ${BORDER}`,flexShrink:0,
+                      background: ed.id===activeId ? BG : SURF,
                       borderTop: ed.id===activeId ? `1px solid ${ACCENT}` : '1px solid transparent',
-                      minWidth:100,maxWidth:180,position:'relative'}}>
+                      minWidth:100, maxWidth:180}}>
                     {renamingId===ed.id ? (
                       <input autoFocus value={renameVal} onChange={e=>setRenameVal(e.target.value)}
                         onBlur={commitRename} onKeyDown={e=>{if(e.key==='Enter')commitRename();if(e.key==='Escape')setRenamingId(null);}}
@@ -1364,18 +1611,16 @@ export default function SQLCodelab() {
                       </span>
                     )}
                     <button onClick={e=>closeEditor(ed.id,e)} className="btn-hover"
-                      style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:12,lineHeight:1,padding:'0 1px',flexShrink:0,opacity: ed.id===activeId ? 0.7 : 0.3}}>✕</button>
+                      style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:12,lineHeight:1,padding:'0 1px',flexShrink:0,opacity:ed.id===activeId?0.7:0.3}}>✕</button>
                   </div>
                 ))}
-                <button onClick={addEditor} title="New editor tab" className="btn-hover"
-                  style={{padding:'0 12px',height:35,background:'none',border:'none',borderRight:`1px solid ${BORDER}`,color:MUTED,cursor:'pointer',fontSize:16,flexShrink:0}}>
-                  +
-                </button>
+                <button onClick={addEditor} title="New tab" className="btn-hover"
+                  style={{padding:'0 12px',background:'none',border:'none',borderRight:`1px solid ${BORDER}`,color:MUTED,cursor:'pointer',fontSize:18,flexShrink:0}}>+</button>
               </div>
               {/* Toolbar */}
-              <div style={{display:'flex',alignItems:'center',gap:6,padding:'5px 12px',borderBottom:`1px solid ${BORDER}`}}>
-                <button onClick={run} className="btn-hover" style={{display:'flex',alignItems:'center',gap:5,padding:'4px 12px',background:BLUE,color:'#fff',border:'none',borderRadius:2,fontWeight:600,fontSize:12,fontFamily:SANS,cursor:'pointer',letterSpacing:'0.01em'}}>
-                  ▶  Run
+              <div style={{display:'flex',alignItems:'center',gap:6,padding:'5px 12px'}}>
+                <button onClick={run} className="btn-hover" style={{display:'flex',alignItems:'center',gap:5,padding:'4px 12px',background:BLUE,color:'#fff',border:'none',borderRadius:2,fontWeight:600,fontSize:12,fontFamily:SANS,cursor:'pointer'}}>
+                  ▶ Run
                 </button>
                 <button onClick={()=>setSQL(DEFAULT_SQL)} className="btn-hover" style={{padding:'4px 10px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:12,fontFamily:SANS,cursor:'pointer'}}>
                   Reset
@@ -1383,18 +1628,18 @@ export default function SQLCodelab() {
                 <button onClick={()=>setSQL('')} className="btn-hover" style={{padding:'4px 10px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:12,fontFamily:SANS,cursor:'pointer'}}>
                   Clear
                 </button>
-                <button onClick={exportSQL} className="btn-hover" title="Export as .sql file"
-                  style={{padding:'4px 10px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:12,fontFamily:SANS,cursor:'pointer',display:'flex',alignItems:'center',gap:4}}>
+                <button onClick={exportSQL} className="btn-hover"
+                  style={{padding:'4px 10px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:12,fontFamily:SANS,cursor:'pointer'}}>
                   Export .sql
                 </button>
-                <div style={{marginLeft:'auto',fontSize:11,color:MUTED,fontFamily:MONO,letterSpacing:'0.02em'}}>Ctrl+Enter to run</div>
+                <div style={{marginLeft:'auto',fontSize:11,color:MUTED,fontFamily:MONO}}>Ctrl+Enter to run</div>
               </div>
             </div>
 
             {/* Code Editor (flex height = 100% - resultsHeight if open, else 100%) */}
             <div style={{flex: resultsOpen ? `0 0 ${100 - resultsHeight}%` : '1', position:'relative',overflow:'hidden',borderBottom: resultsOpen ? `1px solid ${BORDER}` : 'none'}}>
               {/* Line numbers */}
-              <div ref={lnRef} style={{position:'absolute',left:0,top:0,bottom:0,width:44,background:BG,borderRight:`1px solid ${BORDER}33`,overflowY:'hidden',pointerEvents:'none',zIndex:2}}>
+              <div ref={lnRef} style={{position:'absolute',left:0,top:0,bottom:0,width:44,background:BG,borderRight:`1px solid ${BORDER}22`,overflowY:'hidden',pointerEvents:'none',zIndex:2}}>
                 <div style={{...edS,padding:'12px 8px 12px 0',color:'#4E4E4E',textAlign:'right',userSelect:'none',fontSize:'13px'}}>
                   {Array.from({length:lineCount},(_,i)=>`${i+1}\n`).join('')}
                 </div>
@@ -1410,7 +1655,7 @@ export default function SQLCodelab() {
               {suggestions.length > 0 && suggAnchor && (
                 <div style={{position:'absolute',top:suggAnchor.top,left:Math.min(suggAnchor.left, 'calc(100% - 220px)'),zIndex:20,
                   background:SURF2,border:`1px solid ${BORDER}`,borderRadius:2,overflow:'hidden',
-                  boxShadow:'0 4px 16px rgba(0,0,0,0.6)',minWidth:180,maxWidth:260,pointerEvents:'all'}}>
+                  boxShadow:'0 4px 16px rgba(0,0,0,0.5)',minWidth:180,maxWidth:260,pointerEvents:'all'}}>
                   <div style={{padding:'3px 8px',fontSize:10,color:MUTED,fontFamily:MONO,letterSpacing:'0.06em',borderBottom:`1px solid ${BORDER}`,background:SURF,whiteSpace:'nowrap'}}>
                     SUGGESTIONS &nbsp;<span style={{opacity:0.5}}>↑↓ Tab Esc</span>
                   </div>
@@ -1421,15 +1666,14 @@ export default function SQLCodelab() {
                     return (
                       <div key={i} onMouseDown={e=>{e.preventDefault(); applySuggestion(s.label);}}
                         style={{display:'flex',alignItems:'center',gap:6,padding:'4px 8px',cursor:'pointer',
-                          background: i===suggSel ? `${ACCENT}25` : 'transparent',
+                          background: i===suggSel ? `${ACCENT}22` : 'transparent',
                           borderLeft: `2px solid ${i===suggSel ? ACCENT : 'transparent'}`,
                           color: i===suggSel ? TEXT : MUTED}}>
-                        <span style={{fontSize:9,fontFamily:MONO,fontWeight:700,color:kindColor,
-                          padding:'1px 4px',borderRadius:2,flexShrink:0,minWidth:24,textAlign:'center',letterSpacing:'0.03em'}}>
+                        <span style={{fontSize:9,fontFamily:MONO,fontWeight:700,color:kindColor,padding:'1px 4px',borderRadius:2,flexShrink:0,minWidth:24,textAlign:'center'}}>
                           {kindLabel}
                         </span>
                         <span style={{fontFamily:MONO,fontSize:12,flex:1}}>
-                          <span style={{color:AMBER,fontWeight:700}}>{s.label.slice(0, suggAnchor.word.length)}</span>
+                          <span style={{color:ACCENT,fontWeight:700}}>{s.label.slice(0, suggAnchor.word.length)}</span>
                           {s.label.slice(suggAnchor.word.length)}
                         </span>
                         {i === suggSel && <span style={{fontSize:9,color:MUTED,flexShrink:0}}>Tab</span>}
@@ -1469,21 +1713,22 @@ export default function SQLCodelab() {
                     <span style={{fontSize:11,color:GREEN,fontFamily:MONO,marginLeft:4}}>{sortedResult.rows.length} rows × {sortedResult.cols.length} cols</span>
                     <div style={{display:'flex',gap:3,marginLeft:'auto'}}>
                       {['table','chart','pie'].map(v=>(
-                        <button key={v} onClick={()=>setResultView(v)} className="btn-hover" style={{padding:'2px 10px',borderRadius:2,border:`1px solid ${resultView===v?ACCENT:BORDER}`,background:resultView===v?ACCENT+'22':'transparent',color:resultView===v?ACCENT:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer',letterSpacing:'0.02em'}}>
-                          {v==='table'?'Table':v==='chart'?'Bar Chart':'Pie Chart'}
+                        <button key={v} onClick={()=>setResultView(v)} className="btn-hover"
+                          style={{padding:'2px 9px',borderRadius:2,border:`1px solid ${resultView===v?ACCENT:BORDER}`,background:resultView===v?`${ACCENT}20`:'transparent',color:resultView===v?ACCENT:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer'}}>
+                          {v==='table'?'Table':v==='chart'?'Bar':' Pie'}
                         </button>
                       ))}
                     </div>
                   </>}
                   {execErr&&<span style={{fontSize:11,color:RED,fontFamily:MONO,marginLeft:4}}>Error</span>}
                   <button onClick={()=>setResultsOpen(false)} title="Close results" className="btn-hover"
-                    style={{marginLeft: sortedResult ? 6 : 'auto',background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:13,lineHeight:1,padding:'0 2px'}}>✕</button>
+                    style={{marginLeft:sortedResult?6:'auto',background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:13,lineHeight:1,padding:'0 2px'}}>✕</button>
                 </div>
 
                 {/* Results Content */}
                 <div style={{flex:1,overflow:'auto',padding:'0'}}>
                   {execErr&&(
-                    <div style={{margin:12,padding:10,background:'#1C1414',border:`1px solid ${RED}55`,borderRadius:2,fontFamily:MONO,fontSize:12,color:'#F48771'}}>
+                    <div style={{margin:12,padding:10,background:'#1C1414',border:`1px solid ${RED}44`,borderRadius:2,fontFamily:MONO,fontSize:12,color:'#F48771'}}>
                       <span style={{color:RED,fontWeight:700,marginRight:8}}>error</span>{execErr}
                     </div>
                   )}
@@ -1492,13 +1737,13 @@ export default function SQLCodelab() {
                   ))}
                   {sortedResult&&resultView==='table'&&(
                     <div style={{overflowX:'auto'}}>
-                      <table style={{width:'100%',borderCollapse:'collapse',fontSize:13,fontFamily:MONO}}>
+                      <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,fontFamily:MONO}}>
                         <thead>
                           <tr style={{background:SURF2,position:'sticky',top:0,zIndex:5}}>
                             <th style={{padding:'6px 10px',textAlign:'right',fontWeight:400,color:MUTED,fontSize:11,borderBottom:`1px solid ${BORDER}`,width:36}}>#</th>
                             {sortedResult.cols.map(col=>(
                               <th key={col} onClick={()=>{if(sortCol===col)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortCol(col);setSortDir('asc');}}}
-                                style={{padding:'6px 12px',textAlign:'left',fontWeight:600,color:sortCol===col?TEXT:MUTED,fontSize:11,borderBottom:`1px solid ${sortCol===col?ACCENT:BORDER}`,cursor:'pointer',userSelect:'none',whiteSpace:'nowrap',letterSpacing:'0.02em'}}>
+                                style={{padding:'6px 12px',textAlign:'left',fontWeight:600,color:sortCol===col?ACCENT:MUTED,fontSize:11,borderBottom:`1px solid ${sortCol===col?ACCENT:BORDER}`,cursor:'pointer',userSelect:'none',whiteSpace:'nowrap',letterSpacing:'0.02em'}}>
                                 {col}{sortCol===col?sortDir==='asc'?' ↑':' ↓':''}
                               </th>
                             ))}
@@ -1507,11 +1752,11 @@ export default function SQLCodelab() {
                         <tbody>
                           {sortedResult.rows.map((row,ri)=>(
                             <tr key={ri} className="row-hover" style={{borderBottom:`1px solid ${BORDER}22`}}>
-                              <td style={{padding:'5px 10px',color:MUTED,textAlign:'right',fontSize:11,fontFamily:MONO}}>{ri+1}</td>
+                              <td style={{padding:'5px 10px',color:MUTED,textAlign:'right',fontSize:11}}>{ri+1}</td>
                               {row.map((cell,ci)=>{
                                 const isNum=cell!==null&&!isNaN(+cell)&&typeof cell!=='string';
                                 return(
-                                  <td key={ci} style={{padding:'5px 12px',color:cell===null?MUTED:isNum?'#B5CEA8':TEXT,fontStyle:cell===null?'italic':'normal',whiteSpace:'nowrap',maxWidth:280,overflow:'hidden',textOverflow:'ellipsis',fontFamily:MONO,fontSize:12}}>
+                                  <td key={ci} style={{padding:'5px 12px',color:cell===null?MUTED:isNum?'#B5CEA8':TEXT,fontStyle:cell===null?'italic':'normal',whiteSpace:'nowrap',maxWidth:280,overflow:'hidden',textOverflow:'ellipsis'}}>
                                     {cell===null?'NULL':String(cell)}
                                   </td>
                                 );
@@ -1560,7 +1805,6 @@ export default function SQLCodelab() {
                 </div>
               </div>
             ) : (
-              /* Results closed — show re-open strip */
               <div style={{borderTop:`1px solid ${BORDER}`,background:SURF,padding:'4px 14px',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
                 <span style={{fontSize:11,color:MUTED,fontFamily:MONO,textTransform:'uppercase',letterSpacing:'0.06em'}}>Results</span>
                 {sortedResult&&<span style={{fontSize:11,color:GREEN,fontFamily:MONO}}>{sortedResult.rows.length} rows</span>}
@@ -1573,6 +1817,21 @@ export default function SQLCodelab() {
             )}
           </div>
         </div>
+      ) : tab === 'tablebuilder' ? (
+        /* ── TABLE BUILDER TAB ── */
+        <TableBuilder
+          onRunSQL={(sql) => {
+            setSQL(sql);
+            try {
+              const res = activeDb.run(sql);
+              updateActive({ results: res, execErr: null });
+              setSchemaVer(v => v + 1);
+            } catch(e) {
+              updateActive({ execErr: e.message, results: null });
+            }
+          }}
+          onSendToEditor={(sql) => { setSQL(sql); setTab('editor'); }}
+        />
       ) : tab === 'erdiagram' ? (
         /* ── ER DIAGRAM TAB ── */
         <ERDiagram schema={schema} schemaVer={schemaVer + folderVer + activeFolderId} />
@@ -1587,8 +1846,8 @@ export default function SQLCodelab() {
                 style={{display:'flex',alignItems:'center',gap:8,padding:'7px 14px',cursor:'pointer',
                   background:cookCat===cat.id?`${ACCENT}18`:'transparent',
                   borderLeft:`2px solid ${cookCat===cat.id?ACCENT:'transparent'}`,
-                  transition:'all 0.1s'}}>
-                <span style={{fontSize:12,fontWeight:cookCat===cat.id?600:400,color:cookCat===cat.id?TEXT:MUTED,fontFamily:MONO}}>{cat.label}</span>
+                  transition:'background 0.1s'}}>
+                <span style={{fontSize:12,fontFamily:MONO,fontWeight:cookCat===cat.id?600:400,color:cookCat===cat.id?TEXT:MUTED}}>{cat.label}</span>
               </div>
             ))}
           </aside>
@@ -1597,7 +1856,7 @@ export default function SQLCodelab() {
           <div style={{flex:1,overflowY:'auto',padding:20}}>
             {COOKBOOK.filter(c=>c.id===cookCat).map(cat=>(
               <div key={cat.id}>
-                <h2 style={{margin:'0 0 14px',fontSize:15,fontWeight:600,color:TEXT,textAlign:'left',fontFamily:SANS}}>
+                <h2 style={{margin:'0 0 14px',fontSize:14,fontWeight:600,color:TEXT,textAlign:'left',fontFamily:SANS,letterSpacing:'0.01em'}}>
                   {cat.label}
                   <span style={{marginLeft:10,fontSize:11,fontWeight:400,color:MUTED}}>{cat.items.length} snippets</span>
                 </h2>
@@ -1631,16 +1890,16 @@ export default function SQLCodelab() {
       )}
 
       {/* Status Bar */}
-      <div style={{display:'flex',alignItems:'center',gap:0,padding:'0',height:22,background:BLUE,borderTop:'none',fontSize:11,fontFamily:MONO,color:'rgba(255,255,255,0.9)',flexShrink:0}}>
-        <span style={{padding:'0 10px',color: lintErrors.length ? '#FFD2CE' : 'rgba(255,255,255,0.9)',borderRight:'1px solid rgba(255,255,255,0.15)',height:'100%',display:'flex',alignItems:'center',gap:5}}>
-          {lintErrors.length ? `⚠ ${lintErrors.length} problem${lintErrors.length>1?'s':''}` : '✓ No problems'}
+      <div style={{display:'flex',alignItems:'stretch',height:22,background:BLUE,fontSize:11,fontFamily:MONO,color:'rgba(255,255,255,0.9)',flexShrink:0}}>
+        <span style={{padding:'0 10px',display:'flex',alignItems:'center',gap:5,borderRight:'1px solid rgba(255,255,255,0.15)',color:lintErrors.length?'#FFD2CE':'rgba(255,255,255,0.9)'}}>
+          {lintErrors.length?`⚠ ${lintErrors.length} problem${lintErrors.length>1?'s':''}`:'✓ No problems'}
         </span>
-        <span style={{padding:'0 10px',borderRight:'1px solid rgba(255,255,255,0.15)',height:'100%',display:'flex',alignItems:'center'}}>
+        <span style={{padding:'0 10px',display:'flex',alignItems:'center',borderRight:'1px solid rgba(255,255,255,0.15)'}}>
           {getActiveFolder()?.name}
         </span>
-        <span style={{padding:'0 10px',borderRight:'1px solid rgba(255,255,255,0.15)',height:'100%',display:'flex',alignItems:'center'}}>Tables: {Object.keys(schema).length}</span>
-        {sortedResult&&<span style={{padding:'0 10px',height:'100%',display:'flex',alignItems:'center'}}>Last: {sortedResult.rows.length} rows</span>}
-        <span style={{marginLeft:'auto',padding:'0 10px',height:'100%',display:'flex',alignItems:'center',borderLeft:'1px solid rgba(255,255,255,0.15)'}}>{lineCount} lines · SQL · UTF-8</span>
+        <span style={{padding:'0 10px',display:'flex',alignItems:'center',borderRight:'1px solid rgba(255,255,255,0.15)'}}>Tables: {Object.keys(schema).length}</span>
+        {sortedResult&&<span style={{padding:'0 10px',display:'flex',alignItems:'center'}}>Last: {sortedResult.rows.length} rows</span>}
+        <span style={{marginLeft:'auto',padding:'0 10px',display:'flex',alignItems:'center',borderLeft:'1px solid rgba(255,255,255,0.15)'}}>{lineCount} lines · SQL · UTF-8</span>
       </div>
     </div>
   );
