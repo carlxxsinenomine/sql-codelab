@@ -480,11 +480,236 @@ function getChartConfig(cols, rows) {
 }
 
 /* ══════════════════════════════════════════════════════════════
+   ER DIAGRAM HELPERS
+══════════════════════════════════════════════════════════════ */
+function detectRelationships(schema) {
+  const rels = [];
+  const tableNames = Object.keys(schema);
+  for (const [tname, tbl] of Object.entries(schema)) {
+    for (const col of tbl.cols) {
+      if (col.endsWith('_id') && col !== 'id') {
+        const prefix = col.slice(0, -3);
+        const target = tableNames.find(t => t === prefix || t === prefix + 's' || t === prefix + 'es' || t.startsWith(prefix));
+        if (target && target !== tname) {
+          rels.push({ fromTable: tname, fromCol: col, toTable: target, toCol: 'id', color: '' });
+        }
+      }
+    }
+  }
+  const palette = ['#F59E0B','#3B82F6','#10B981','#EF4444','#8B5CF6','#EC4899','#06B6D4'];
+  rels.forEach((r, i) => { r.color = palette[i % palette.length]; });
+  return rels;
+}
+
+function inferColType(tbl, col, colIdx) {
+  if (col === 'id' || col.endsWith('_id')) return 'int';
+  const vals = tbl.rows.slice(0, 8).map(r => r[colIdx]).filter(v => v != null);
+  if (!vals.length) return 'text';
+  if (vals.every(v => typeof v === 'number' && Number.isInteger(v))) return 'int';
+  if (vals.every(v => typeof v === 'number')) return 'decimal';
+  if (vals.every(v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v))) return 'date';
+  const maxLen = Math.max(...vals.map(v => String(v).length));
+  if (vals.every(v => typeof v === 'string') && maxLen <= 2) return 'char(2)';
+  if (vals.every(v => typeof v === 'string')) return `varchar(${Math.min(255, maxLen * 2 + 20)})`;
+  return 'text';
+}
+
+const TABLE_W = 230;
+const HEADER_H = 38;
+const COL_ROW_H = 26;
+const TABLE_PAD_B = 8;
+
+function ERDiagram({ schema, schemaVer }) {
+  const tableNames = Object.keys(schema);
+  const [positions, setPositions] = useState(() => {
+    const pos = {};
+    const cols = Math.max(2, Math.ceil(Math.sqrt(tableNames.length)));
+    tableNames.forEach((t, i) => {
+      pos[t] = { x: 60 + (i % cols) * 310, y: 60 + Math.floor(i / cols) * 320 };
+    });
+    return pos;
+  });
+  const [dragging, setDragging] = useState(null); // { tname, ox, oy }
+  const containerRef = useRef(null);
+  const relationships = useMemo(() => detectRelationships(schema), [schemaVer]);
+
+  // Reset layout when tables change
+  useEffect(() => {
+    const names = Object.keys(schema);
+    setPositions(prev => {
+      const next = { ...prev };
+      const cols = Math.max(2, Math.ceil(Math.sqrt(names.length)));
+      names.forEach((t, i) => {
+        if (!next[t]) next[t] = { x: 60 + (i % cols) * 310, y: 60 + Math.floor(i / cols) * 320 };
+      });
+      Object.keys(next).forEach(k => { if (!schema[k]) delete next[k]; });
+      return next;
+    });
+  }, [schemaVer]);
+
+  const onMouseDown = useCallback((e, tname) => {
+    e.preventDefault();
+    const rect = containerRef.current.getBoundingClientRect();
+    setDragging({ tname, ox: e.clientX - rect.left - positions[tname].x, oy: e.clientY - rect.top - positions[tname].y });
+  }, [positions]);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e) => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const x = Math.max(0, e.clientX - rect.left - dragging.ox);
+      const y = Math.max(0, e.clientY - rect.top - dragging.oy);
+      setPositions(p => ({ ...p, [dragging.tname]: { x, y } }));
+    };
+    const onUp = () => setDragging(null);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, [dragging]);
+
+  function tblH(tname) { return HEADER_H + (schema[tname]?.cols.length || 0) * COL_ROW_H + TABLE_PAD_B; }
+
+  function connPt(tname, colName, prefer) {
+    const pos = positions[tname] || { x: 0, y: 0 };
+    const tbl = schema[tname];
+    if (!tbl) return { x: pos.x, y: pos.y };
+    const colIdx = tbl.cols.indexOf(colName);
+    const y = pos.y + HEADER_H + colIdx * COL_ROW_H + COL_ROW_H / 2;
+    return { x: prefer === 'right' ? pos.x + TABLE_W : pos.x, y };
+  }
+
+  // Compute SVG canvas size
+  const canvasW = Math.max(900, ...tableNames.map(t => (positions[t]?.x || 0) + TABLE_W + 80));
+  const canvasH = Math.max(600, ...tableNames.map(t => (positions[t]?.y || 0) + tblH(t) + 80));
+
+  const fkSet = new Set(relationships.map(r => `${r.fromTable}.${r.fromCol}`));
+  const pkSet = new Set(tableNames.map(t => `${t}.id`));
+
+  return (
+    <div ref={containerRef} style={{ position: 'relative', width: '100%', height: '100%', overflow: 'auto', background: BG, cursor: dragging ? 'grabbing' : 'default' }}>
+      {/* SVG connection layer */}
+      <svg style={{ position: 'absolute', top: 0, left: 0, width: canvasW, height: canvasH, pointerEvents: 'none', zIndex: 0 }}>
+        <defs>
+          {relationships.map((rel, i) => (
+            <marker key={i} id={`arrow-${i}`} markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+              <polygon points="0 0, 10 3.5, 0 7" fill={rel.color} opacity="0.9"/>
+            </marker>
+          ))}
+        </defs>
+        {relationships.map((rel, i) => {
+          const fp = positions[rel.fromTable], tp = positions[rel.toTable];
+          if (!fp || !tp) return null;
+          // Decide side based on relative position
+          const fromRight = fp.x + TABLE_W / 2 < tp.x + TABLE_W / 2;
+          const from = connPt(rel.fromTable, rel.fromCol, fromRight ? 'right' : 'left');
+          const to = connPt(rel.toTable, rel.toCol, fromRight ? 'left' : 'right');
+          const bend = Math.min(120, Math.abs(from.x - to.x) * 0.5 + 40);
+          const cp1x = from.x + (fromRight ? bend : -bend);
+          const cp2x = to.x + (fromRight ? -bend : bend);
+          return (
+            <g key={i}>
+              <path d={`M${from.x},${from.y} C${cp1x},${from.y} ${cp2x},${to.y} ${to.x},${to.y}`}
+                stroke={rel.color} strokeWidth={2.5} fill="none" opacity={0.85} markerEnd={`url(#arrow-${i})`}/>
+              {/* FK dot */}
+              <circle cx={from.x} cy={from.y} r={5} fill={rel.color} opacity={0.9}/>
+              {/* PK double ring */}
+              <circle cx={to.x} cy={to.y} r={7} fill="none" stroke={rel.color} strokeWidth={2} opacity={0.8}/>
+              <circle cx={to.x} cy={to.y} r={3.5} fill={rel.color} opacity={0.9}/>
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* Table boxes */}
+      {tableNames.map(tname => {
+        const tbl = schema[tname];
+        const pos = positions[tname] || { x: 0, y: 0 };
+        const relColors = {};
+        relationships.filter(r => r.fromTable === tname).forEach(r => { relColors[r.fromCol] = r.color; });
+        const isDragging = dragging?.tname === tname;
+
+        return (
+          <div key={tname + schemaVer} style={{
+            position: 'absolute', left: pos.x, top: pos.y, width: TABLE_W, zIndex: isDragging ? 100 : 1,
+            borderRadius: 8, overflow: 'hidden', border: `1.5px solid ${isDragging ? AMBER : '#30363D'}`,
+            boxShadow: isDragging ? `0 8px 32px rgba(0,0,0,0.7), 0 0 0 2px ${AMBER}55` : '0 4px 20px rgba(0,0,0,0.5)',
+            transition: isDragging ? 'none' : 'box-shadow 0.2s',
+          }}>
+            {/* Header */}
+            <div onMouseDown={e => onMouseDown(e, tname)}
+              style={{ background: '#37373D', padding: '0 12px', height: HEADER_H, display: 'flex', alignItems: 'center', gap: 8, cursor: 'grab', userSelect: 'none', borderBottom: `1px solid ${BORDER}` }}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{flexShrink:0}}>
+                <rect x="1" y="3" width="14" height="10" rx="1" stroke={ACCENT} strokeWidth="1.5" fill="none"/>
+                <line x1="1" y1="7" x2="15" y2="7" stroke={ACCENT} strokeWidth="1"/>
+                <line x1="5" y1="3" x2="5" y2="13" stroke={ACCENT} strokeWidth="1"/>
+              </svg>
+              <span style={{ fontSize: 12, fontWeight: 600, color: TEXT, fontFamily: MONO, letterSpacing: '0.02em' }}>{tname}</span>
+              <span style={{ marginLeft: 'auto', fontSize: 10, color: MUTED, fontFamily: MONO }}>{tbl.rows.length} rows</span>
+            </div>
+            {/* Column rows */}
+            {tbl.cols.map((col, ci) => {
+              const isFK = fkSet.has(`${tname}.${col}`);
+              const isPK = pkSet.has(`${tname}.${col}`);
+              const colColor = isPK ? AMBER : isFK ? (relColors[col] || '#3B82F6') : '#7D8590';
+              const colType = inferColType(tbl, col, ci);
+              return (
+                <div key={col} style={{
+                  display: 'flex', alignItems: 'center', gap: 7, padding: `0 10px`,
+                  height: COL_ROW_H, background: ci % 2 === 0 ? '#161B22' : '#1C2128',
+                  borderTop: '1px solid #21262D',
+                }}>
+                  <span style={{ fontSize: 10, color: colColor, lineHeight: 1, flexShrink: 0, fontFamily: MONO, fontWeight: 700 }}>
+                    {isPK ? 'PK' : isFK ? 'FK' : '  '}
+                  </span>
+                  <span style={{ fontSize: 11, fontFamily: MONO, color: isPK ? AMBER : isFK ? (relColors[col] || '#3B82F6') : TEXT, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{col}</span>
+                  <span style={{ fontSize: 10, fontFamily: MONO, color: MUTED, flexShrink: 0 }}>{colType}</span>
+                </div>
+              );
+            })}
+            <div style={{ height: TABLE_PAD_B, background: '#161B22' }}/>
+          </div>
+        );
+      })}
+
+      {/* Legend */}
+      <div style={{ position: 'fixed', bottom: 32, right: 24, background: SURF2, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '10px 14px', zIndex: 200, minWidth: 160 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 }}>Legend</div>
+        {[{ icon: 'PK', label: 'Primary Key', color: AMBER }, { icon: 'FK', label: 'Foreign Key', color: ACCENT }, { icon: '  ', label: 'Column', color: MUTED }].map(l => (
+          <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+            <span style={{ fontSize: 10, fontFamily: MONO, fontWeight: 700, color: l.color, minWidth: 16 }}>{l.icon}</span>
+            <span style={{ fontSize: 11, fontFamily: MONO, color: l.color }}>{l.label}</span>
+          </div>
+        ))}
+        <div style={{ borderTop: `1px solid ${BORDER}`, marginTop: 8, paddingTop: 8 }}>
+          {relationships.map((rel, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <div style={{ width: 20, height: 2.5, background: rel.color, borderRadius: 2, flexShrink: 0 }}/>
+              <span style={{ fontSize: 10, fontFamily: MONO, color: TEXT }}>{rel.fromTable}.{rel.fromCol} → {rel.toTable}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{ marginTop: 6, fontSize: 10, color: MUTED }}>Drag tables to reposition</div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   FOLDER / WORKSPACE SYSTEM
+══════════════════════════════════════════════════════════════ */
+let folderIdCounter = 1;
+function makeFolder(name, seeded = false) {
+  const db = new Database();
+  if (!seeded) db.tables = {};
+  return { id: folderIdCounter++, name, db, expanded: true };
+}
+
+/* ══════════════════════════════════════════════════════════════
    MAIN COMPONENT
 ══════════════════════════════════════════════════════════════ */
-const DEFAULT_SQL = `-- 🗄️ Welcome to SQL Codelab!
--- Tables: employees, departments, products, orders
--- Press ▶ Run or Ctrl+Enter to execute queries
+const DEFAULT_SQL = `-- SQL Codelab · Tables: employees, departments, products, orders
+-- Press Run or Ctrl+Enter to execute
 
 SELECT
   e.name,
@@ -495,9 +720,10 @@ JOIN departments d ON e.department_id = d.id
 WHERE e.salary > 80000
 ORDER BY e.salary DESC;`;
 
-const MONO = "'JetBrains Mono','Fira Code','Cascadia Code','Courier New',monospace";
-const SANS = "'Inter','Segoe UI',system-ui,sans-serif";
-const BG='#0D1117',SURF='#161B22',SURF2='#1C2128',BORDER='#21262D',TEXT='#E6EDF3',MUTED='#7D8590',AMBER='#F59E0B',GREEN='#3FB950',RED='#F85149';
+const MONO = "'JetBrains Mono','Cascadia Code','Fira Code','Consolas','Courier New',monospace";
+const SANS = "'Segoe UI','SF Pro Text',system-ui,sans-serif";
+const BG='#1E1E1E',SURF='#252526',SURF2='#2D2D30',BORDER='#3C3C3C',TEXT='#D4D4D4',MUTED='#858585',AMBER='#CE9178',GREEN='#4EC9B0',RED='#F44747';
+const BLUE='#007ACC',ACCENT='#569CD6';
 
 let editorCounter = 1;
 function makeEditor(sql = DEFAULT_SQL) {
@@ -535,11 +761,21 @@ export default function SQLCodelab() {
   const [resultsHeight, setResultsHeight] = useState(42); // percent
   const resultsDrag = useRef(null);
 
-  const db = useRef(new Database());
+  // ── Folder / Workspace system ──
+  const foldersRef = useRef([makeFolder('Default DB', true)]);
+  const [activeFolderId, setActiveFolderId] = useState(() => foldersRef.current[0].id);
+  const [folderVer, setFolderVer] = useState(0);
+  const [renamingFolderId, setRenamingFolderId] = useState(null);
+  const [folderRenameVal, setFolderRenameVal] = useState('');
+  const [expandedFolderIds, setExpandedFolderIds] = useState(() => new Set([foldersRef.current[0].id]));
   const taRef = useRef(null);
   const hlRef = useRef(null);
   const lnRef = useRef(null);
   const suggListRef = useRef(null);
+
+  // ── Active folder / db ──
+  const getActiveFolder = () => foldersRef.current.find(f => f.id === activeFolderId) || foldersRef.current[0];
+  const activeDb = getActiveFolder()?.db;
 
   // Active editor shorthand
   const activeEditor = editors.find(e => e.id === activeId) || editors[0];
@@ -596,9 +832,11 @@ export default function SQLCodelab() {
 
   const run = useCallback(() => {
     setSortCol(null);
-    try{const res=db.current.run(sql);updateActive({results:res,execErr:null});setSchemaVer(v=>v+1);}
+    const aDb = (foldersRef.current.find(f => f.id === activeFolderId) || foldersRef.current[0])?.db;
+    if (!aDb) return;
+    try{const res=aDb.run(sql);updateActive({results:res,execErr:null});setSchemaVer(v=>v+1);}
     catch(e){updateActive({execErr:e.message,results:null});}
-  }, [sql, activeId]);
+  }, [sql, activeId, activeFolderId]);
 
   useEffect(() => {
     const h=(e)=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();run();}};
@@ -607,16 +845,17 @@ export default function SQLCodelab() {
 
   // ── Autocomplete pool ──
   const suggPool = useMemo(() => {
+    const tables = (foldersRef.current.find(f => f.id === activeFolderId) || foldersRef.current[0])?.db?.tables || {};
     const kws = [...SQL_KW].map(k => ({ label: k, kind: 'kw' }));
     const fns = [...SQL_FN].map(f => ({ label: f, kind: 'fn' }));
-    const tbls = Object.keys(db.current.tables).map(t => ({ label: t, kind: 'tbl' }));
+    const tbls = Object.keys(tables).map(t => ({ label: t, kind: 'tbl' }));
     const seen = new Set();
-    const cols = Object.values(db.current.tables).flatMap(t =>
+    const cols = Object.values(tables).flatMap(t =>
       t.cols.filter(c => { if (seen.has(c)) return false; seen.add(c); return true; })
             .map(c => ({ label: c, kind: 'col' }))
     );
     return [...kws, ...fns, ...tbls, ...cols];
-  }, [schemaVer]);
+  }, [schemaVer, activeFolderId, folderVer]);
 
   function computeSuggestions(ta) {
     const pos = ta.selectionStart;
@@ -831,9 +1070,55 @@ export default function SQLCodelab() {
     a.click(); URL.revokeObjectURL(url);
   }
 
-  const schema = db.current.tables;
+  const schema = activeDb?.tables || {};
   const results = activeEditor?.results;
   const execErr = activeEditor?.execErr;
+
+  // ── Folder management ──
+  function addFolder() {
+    const f = makeFolder(`Database ${foldersRef.current.length + 1}`, false);
+    foldersRef.current = [...foldersRef.current, f];
+    setActiveFolderId(f.id);
+    setExpandedFolderIds(s => new Set([...s, f.id]));
+    setFolderVer(v => v + 1);
+    setSchemaVer(v => v + 1);
+  }
+  function deleteFolder(id, e) {
+    e?.stopPropagation();
+    if (foldersRef.current.length <= 1) return;
+    foldersRef.current = foldersRef.current.filter(f => f.id !== id);
+    if (activeFolderId === id) {
+      const next = foldersRef.current[0];
+      setActiveFolderId(next.id);
+    }
+    setFolderVer(v => v + 1);
+    setSchemaVer(v => v + 1);
+  }
+  function openFolder(id) {
+    setActiveFolderId(id);
+    setExpandedFolderIds(s => new Set([...s, id]));
+    setSchemaVer(v => v + 1);
+    updateActive({ results: null, execErr: null });
+  }
+  function toggleFolderExpand(id, e) {
+    e?.stopPropagation();
+    setExpandedFolderIds(s => {
+      const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n;
+    });
+  }
+  function startFolderRename(f, e) {
+    e?.stopPropagation(); e?.preventDefault();
+    setRenamingFolderId(f.id); setFolderRenameVal(f.name);
+  }
+  function commitFolderRename() {
+    if (folderRenameVal.trim()) {
+      foldersRef.current = foldersRef.current.map(f =>
+        f.id === renamingFolderId ? { ...f, name: folderRenameVal.trim() } : f
+      );
+      setFolderVer(v => v + 1);
+    }
+    setRenamingFolderId(null);
+  }
   const displayResult = results?.filter(r=>r.kind==='rows').at(-1);
   const messages = results?.filter(r=>r.kind==='msg');
 
@@ -863,38 +1148,52 @@ export default function SQLCodelab() {
       <style>{`
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body, #root { width: 100%; height: 100%; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: ${SURF}; }
-        ::-webkit-scrollbar-thumb { background: #30363D; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #484F58; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #424242; border-radius: 0; }
+        ::-webkit-scrollbar-thumb:hover { background: #4E4E4E; }
         textarea { outline: none; border: none; resize: none; }
-        .btn-hover:hover { filter: brightness(1.15); }
+        .btn-hover:hover { filter: brightness(1.12); }
         .row-hover:hover { background: rgba(255,255,255,0.04) !important; }
-        .schema-row:hover { background: rgba(255,255,255,0.05); }
-        .snippet-card:hover { border-color: ${AMBER}44 !important; }
-        .editor-tab:hover { background: rgba(255,255,255,0.05); }
-        .resize-handle-x { cursor: col-resize; width: 5px; background: transparent; flex-shrink:0; transition: background 0.15s; }
-        .resize-handle-x:hover, .resize-handle-x:active { background: ${AMBER}55; }
-        .resize-handle-y { cursor: row-resize; height: 5px; background: transparent; flex-shrink:0; transition: background 0.15s; }
-        .resize-handle-y:hover, .resize-handle-y:active { background: ${AMBER}55; }
+        .schema-row:hover { background: rgba(255,255,255,0.06); }
+        .snippet-card:hover { border-color: ${ACCENT}55 !important; }
+        .editor-tab:hover { background: ${BG} !important; }
+        .resize-handle-x { cursor: col-resize; width: 4px; background: transparent; flex-shrink:0; transition: background 0.15s; }
+        .resize-handle-x:hover, .resize-handle-x:active { background: ${ACCENT}88; }
+        .resize-handle-y { cursor: row-resize; height: 4px; background: transparent; flex-shrink:0; transition: background 0.15s; }
+        .resize-handle-y:hover, .resize-handle-y:active { background: ${ACCENT}88; }
       `}</style>
 
       {/* ── HEADER ── */}
-      <header style={{display:'flex',alignItems:'center',gap:16,padding:'0 20px',height:50,borderBottom:`1px solid ${BORDER}`,background:SURF,flexShrink:0}}>
-        <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <span style={{fontSize:22}}>🗄️</span>
-          <span style={{fontFamily:MONO,fontSize:15,fontWeight:700,color:AMBER,letterSpacing:'0.05em'}}>SQL Codelab</span>
+      <header style={{display:'flex',alignItems:'center',gap:0,padding:'0',height:35,borderBottom:`1px solid ${BORDER}`,background:'#323233',flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,padding:'0 16px',height:'100%',borderRight:`1px solid ${BORDER}`,flexShrink:0}}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <rect x="1" y="2" width="6" height="12" rx="1" fill={ACCENT} opacity="0.9"/>
+            <rect x="9" y="2" width="6" height="5" rx="1" fill={ACCENT} opacity="0.6"/>
+            <rect x="9" y="9" width="6" height="5" rx="1" fill={AMBER} opacity="0.9"/>
+          </svg>
+          <span style={{fontFamily:MONO,fontSize:12,fontWeight:600,color:TEXT,letterSpacing:'0.02em'}}>SQL Codelab</span>
         </div>
-        <div style={{display:'flex',gap:4,marginLeft:8}}>
-          {['editor','cookbook'].map(t=>(
-            <button key={t} onClick={()=>setTab(t)} className="btn-hover" style={{padding:'5px 14px',borderRadius:6,border:'none',background:tab===t?AMBER:'transparent',color:tab===t?BG:MUTED,fontFamily:SANS,fontSize:13,fontWeight:600,cursor:'pointer',transition:'all 0.15s',letterSpacing:'0.03em'}}>
-              {t==='editor'?'⌨️  Editor':'📚  Cookbook'}
+        <div style={{display:'flex',height:'100%'}}>
+          {[{id:'editor',label:'Editor'},{id:'cookbook',label:'Cookbook'},{id:'erdiagram',label:'ER Diagram'}].map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} className="btn-hover" style={{
+              padding:'0 16px',border:'none',height:'100%',
+              background: tab===t.id ? BG : 'transparent',
+              color: tab===t.id ? TEXT : MUTED,
+              fontFamily:SANS,fontSize:12,fontWeight:400,cursor:'pointer',
+              borderRight:`1px solid ${BORDER}`,
+              borderBottom: tab===t.id ? `1px solid ${BG}` : `1px solid ${BORDER}`,
+              position:'relative',top: tab===t.id ? 1 : 0,
+              letterSpacing:'0.01em',
+            }}>
+              {t.label}
             </button>
           ))}
         </div>
-        <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
-          {lintErrors.length>0&&<span style={{fontSize:12,color:RED,fontFamily:MONO}}>⚠ {lintErrors.length} issue{lintErrors.length>1?'s':''}</span>}
-          {/* <span style={{fontSize:11,color:MUTED,fontFamily:MONO}}>{lineCount} lines</span> */}
+        <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',paddingRight:16}}>
+          {lintErrors.length>0&&<span style={{fontSize:11,color:RED,fontFamily:MONO}}>
+            <span style={{marginRight:4}}>⚠</span>{lintErrors.length} problem{lintErrors.length>1?'s':''}
+          </span>}
         </div>
       </header>
 
@@ -902,34 +1201,129 @@ export default function SQLCodelab() {
         /* ── EDITOR TAB ── */
         <div style={{display:'flex',flex:1,overflow:'hidden'}}>
 
-          {/* Schema Sidebar */}
+          {/* VSCode Explorer Sidebar */}
           {sidebarOpen && (
             <aside style={{width:sidebarWidth,borderRight:`1px solid ${BORDER}`,background:SURF,display:'flex',flexDirection:'column',overflow:'hidden',flexShrink:0}}>
-              <div style={{padding:'8px 12px 6px',fontSize:10,fontWeight:700,letterSpacing:'0.1em',color:MUTED,textTransform:'uppercase',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-                <span>Schema Browser</span>
-                <button onClick={()=>setSidebarOpen(false)} title="Close sidebar" style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 2px'}} className="btn-hover">✕</button>
+              <style>{`
+                .folder-row:hover .folder-actions { opacity: 1 !important; }
+                .folder-row:hover { background: rgba(255,255,255,0.06) !important; }
+                .tbl-row:hover { background: rgba(255,255,255,0.04) !important; }
+              `}</style>
+
+              {/* Explorer header */}
+              <div style={{padding:'0 12px',height:35,display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0,borderBottom:`1px solid ${BORDER}`}}>
+                <span style={{fontSize:11,fontWeight:700,letterSpacing:'0.08em',color:MUTED,textTransform:'uppercase',userSelect:'none',fontFamily:SANS}}>Explorer</span>
+                <div style={{display:'flex',gap:2}}>
+                  <button title="New Database" onClick={addFolder} className="btn-hover"
+                    style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:18,lineHeight:1,padding:'2px 5px',borderRadius:3,display:'flex',alignItems:'center',justifyContent:'center',width:22,height:22}}
+                  >+</button>
+                  <button onClick={()=>setSidebarOpen(false)} title="Close" className="btn-hover"
+                    style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:14,lineHeight:1,padding:'2px 4px',borderRadius:3,display:'flex',alignItems:'center',justifyContent:'center',width:22,height:22}}>✕</button>
+                </div>
               </div>
+
+              {/* Tree scroll area */}
               <div style={{overflowY:'auto',flex:1}}>
-                {Object.entries(schema).map(([tname,tbl])=>(
-                  <div key={tname+schemaVer}>
-                    <div className="schema-row" onClick={()=>setExpandedTbls(s=>{const n=new Set(s);n.has(tname)?n.delete(tname):n.add(tname);return n;})}
-                      style={{display:'flex',alignItems:'center',gap:6,padding:'6px 12px',cursor:'pointer',userSelect:'none'}}>
-                      <span style={{fontSize:10,color:MUTED,transition:'transform 0.15s',transform:expandedTbls.has(tname)?'rotate(90deg)':'none',display:'inline-block'}}>▶</span>
-                      <span style={{fontSize:12,fontFamily:MONO,color:TEXT}}>📋 {tname}</span>
-                      <span style={{marginLeft:'auto',fontSize:10,color:MUTED,fontFamily:MONO}}>{tbl.rows.length}r</span>
-                    </div>
-                    {expandedTbls.has(tname)&&tbl.cols.map(col=>(
-                      <div key={col} style={{padding:'3px 12px 3px 30px',fontSize:11,fontFamily:MONO,color:'#8B949E',display:'flex',alignItems:'center',gap:6}}>
-                        <span style={{color:'#3B82F6',fontSize:9}}>●</span>{col}
+
+                {/* Root workspace row */}
+                <div style={{display:'flex',alignItems:'center',gap:4,padding:'6px 10px 4px 8px',userSelect:'none',cursor:'default'}}>
+                  <span style={{fontSize:10,color:MUTED,fontWeight:700}}>▾</span>
+                  <span style={{fontSize:11,fontWeight:700,color:MUTED,textTransform:'uppercase',letterSpacing:'0.08em',fontFamily:SANS}}>SQL-CODELAB</span>
+                </div>
+
+                {/* Folder list */}
+                {foldersRef.current.map(folder => {
+                  const isActive = folder.id === activeFolderId;
+                  const isExpanded = expandedFolderIds.has(folder.id);
+                  const folderTables = Object.entries(folder.db?.tables || {});
+                  return (
+                    <div key={folder.id + '-' + folderVer}>
+                      {/* Folder row */}
+                      <div className="folder-row" onClick={() => openFolder(folder.id)}
+                        style={{display:'flex',alignItems:'center',gap:0,padding:'3px 6px 3px 16px',cursor:'pointer',userSelect:'none',
+                          borderLeft:`2px solid ${isActive ? ACCENT : 'transparent'}`,
+                          background: isActive ? `${ACCENT}15` : 'transparent',
+                          position:'relative',
+                        }}>
+                        {/* Expand chevron */}
+                        <span onClick={e=>toggleFolderExpand(folder.id,e)}
+                          style={{fontSize:9,color:MUTED,width:14,flexShrink:0,transition:'transform 0.1s',display:'inline-block',
+                            transform:isExpanded?'rotate(90deg)':'none',textAlign:'center'}}>›</span>
+                        {/* Folder icon - VSCode style SVG */}
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{flexShrink:0,marginRight:4}}>
+                          {isActive||isExpanded
+                            ? <><path d="M1 4a1 1 0 011-1h4.5l1.5 1.5H14a1 1 0 011 1v6a1 1 0 01-1 1H2a1 1 0 01-1-1V4z" fill={AMBER} opacity="0.8"/><path d="M1 6h14" stroke={AMBER} strokeWidth="0.5" opacity="0.4"/></>
+                            : <><path d="M1 4a1 1 0 011-1h4.5l1.5 1.5H14a1 1 0 011 1v6a1 1 0 01-1 1H2a1 1 0 01-1-1V4z" fill={MUTED} opacity="0.5"/></>
+                          }
+                        </svg>
+                        {/* Name or rename input */}
+                        {renamingFolderId === folder.id ? (
+                          <input autoFocus value={folderRenameVal}
+                            onChange={e=>setFolderRenameVal(e.target.value)}
+                            onBlur={commitFolderRename}
+                            onKeyDown={e=>{if(e.key==='Enter')commitFolderRename();if(e.key==='Escape')setRenamingFolderId(null);}}
+                            onClick={e=>e.stopPropagation()}
+                            style={{flex:1,background:SURF2,border:`1px solid ${ACCENT}`,borderRadius:2,color:TEXT,fontFamily:MONO,fontSize:11,padding:'1px 4px',outline:'none'}}/>
+                        ) : (
+                          <span onDoubleClick={e=>startFolderRename(folder,e)}
+                            style={{flex:1,fontSize:12,fontFamily:MONO,color:isActive?TEXT:MUTED,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',fontWeight:isActive?600:400}}>
+                            {folder.name}
+                          </span>
+                        )}
+                        {/* Hover actions */}
+                        <div className="folder-actions" style={{display:'flex',gap:2,opacity:0,transition:'opacity 0.1s',flexShrink:0,marginLeft:2}}>
+                          <button title="Rename" onClick={e=>startFolderRename(folder,e)} className="btn-hover"
+                            style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:13,padding:'0 3px',lineHeight:1}}>✎</button>
+                          {foldersRef.current.length > 1 && (
+                            <button title="Delete" onClick={e=>deleteFolder(folder.id,e)} className="btn-hover"
+                              style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:11,padding:'0 3px',lineHeight:1}}>✕</button>
+                          )}
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                ))}
+
+                      {/* Tables under folder */}
+                      {isExpanded && (
+                        <div>
+                          {folderTables.length === 0 ? (
+                            <div style={{padding:'4px 12px 4px 36px',fontSize:10,color:MUTED,fontStyle:'italic',fontFamily:SANS}}>
+                              No tables — run CREATE TABLE
+                            </div>
+                          ) : folderTables.map(([tname, tbl]) => (
+                            <div key={tname + schemaVer}>
+                              {/* Table row */}
+                              <div className="tbl-row schema-row"
+                                onClick={()=>setExpandedTbls(s=>{const n=new Set(s);n.has(tname)?n.delete(tname):n.add(tname);return n;})}
+                                style={{display:'flex',alignItems:'center',gap:5,padding:'3px 10px 3px 30px',cursor:'pointer',userSelect:'none'}}>
+                                <span style={{fontSize:9,color:MUTED,transition:'transform 0.1s',display:'inline-block',transform:expandedTbls.has(tname)?'rotate(90deg)':'none'}}>›</span>
+                                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style={{flexShrink:0}}>
+                                  <rect x="1" y="2" width="14" height="12" rx="1" stroke={MUTED} strokeWidth="1.3" fill="none"/>
+                                  <line x1="1" y1="6" x2="15" y2="6" stroke={MUTED} strokeWidth="1"/>
+                                  <line x1="5" y1="2" x2="5" y2="14" stroke={MUTED} strokeWidth="1"/>
+                                </svg>
+                                <span style={{fontSize:11,fontFamily:MONO,color:TEXT,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{tname}</span>
+                                <span style={{fontSize:9,color:MUTED,fontFamily:MONO,flexShrink:0}}>{tbl.rows.length}</span>
+                              </div>
+                              {/* Column rows */}
+                              {expandedTbls.has(tname) && tbl.cols.map(col=>(
+                                <div key={col} style={{padding:'2px 10px 2px 50px',fontSize:11,fontFamily:MONO,color:MUTED,display:'flex',alignItems:'center',gap:6}}>
+                                  <span style={{color:ACCENT,fontSize:9,flexShrink:0}}>─</span>
+                                  <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{col}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              <div style={{borderTop:`1px solid ${BORDER}`,padding:'10px 12px'}}>
-                <button onClick={()=>{db.current.seed();setSchemaVer(v=>v+1);updateActive({results:null,execErr:null});}} className="btn-hover"
-                  style={{width:'100%',padding:'6px',background:'#21262D',border:`1px solid ${BORDER}`,borderRadius:6,color:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer'}}>
-                  ↺ Reset Database
+
+              {/* Bottom actions */}
+              <div style={{borderTop:`1px solid ${BORDER}`,padding:'8px 10px',display:'flex',flexDirection:'column',gap:6}}>
+                <button onClick={()=>{activeDb?.seed();setSchemaVer(v=>v+1);updateActive({results:null,execErr:null});}} className="btn-hover"
+                  style={{width:'100%',padding:'5px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:3,color:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer',letterSpacing:'0.01em'}}>
+                  Reset Active DB
                 </button>
               </div>
             </aside>
@@ -946,62 +1340,62 @@ export default function SQLCodelab() {
             {/* Editor Tabs + Toolbar */}
             <div style={{display:'flex',flexDirection:'column',background:SURF,borderBottom:`1px solid ${BORDER}`,flexShrink:0}}>
               {/* Tab bar */}
-              <div style={{display:'flex',alignItems:'center',overflowX:'auto',borderBottom:`1px solid ${BORDER}`,minHeight:36}}>
+              <div style={{display:'flex',alignItems:'center',overflowX:'auto',borderBottom:`1px solid ${BORDER}`,minHeight:35,background:SURF}}>
                 {!sidebarOpen && (
-                  <button onClick={()=>setSidebarOpen(true)} title="Show schema sidebar" className="btn-hover"
-                    style={{padding:'0 10px',height:36,background:'none',border:'none',borderRight:`1px solid ${BORDER}`,color:MUTED,cursor:'pointer',fontSize:13,flexShrink:0}}>
+                  <button onClick={()=>setSidebarOpen(true)} title="Show Explorer" className="btn-hover"
+                    style={{padding:'0 10px',height:35,background:'none',border:'none',borderRight:`1px solid ${BORDER}`,color:MUTED,cursor:'pointer',fontSize:14,flexShrink:0,letterSpacing:'0.05em'}}>
                     ☰
                   </button>
                 )}
                 {editors.map(ed=>(
                   <div key={ed.id} className="editor-tab" onClick={()=>setActiveId(ed.id)}
-                    style={{display:'flex',alignItems:'center',gap:6,padding:'0 12px',height:36,cursor:'pointer',borderRight:`1px solid ${BORDER}`,flexShrink:0,
-                      background:ed.id===activeId?BG:'transparent',
-                      borderBottom:ed.id===activeId?`2px solid ${AMBER}`:'2px solid transparent',
-                      minWidth:100,maxWidth:180}}>
+                    style={{display:'flex',alignItems:'center',gap:6,padding:'0 12px',height:35,cursor:'pointer',borderRight:`1px solid ${BORDER}`,flexShrink:0,
+                      background:ed.id===activeId?BG:SURF,
+                      borderTop: ed.id===activeId ? `1px solid ${ACCENT}` : '1px solid transparent',
+                      minWidth:100,maxWidth:180,position:'relative'}}>
                     {renamingId===ed.id ? (
                       <input autoFocus value={renameVal} onChange={e=>setRenameVal(e.target.value)}
                         onBlur={commitRename} onKeyDown={e=>{if(e.key==='Enter')commitRename();if(e.key==='Escape')setRenamingId(null);}}
                         onClick={e=>e.stopPropagation()}
                         style={{background:'transparent',border:'none',outline:'none',color:TEXT,fontFamily:MONO,fontSize:12,width:'100%'}}/>
                     ) : (
-                      <span onDoubleClick={e=>startRename(ed,e)} style={{fontSize:12,fontFamily:MONO,color:ed.id===activeId?AMBER:MUTED,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>
+                      <span onDoubleClick={e=>startRename(ed,e)} style={{fontSize:12,fontFamily:MONO,color:ed.id===activeId?TEXT:MUTED,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',flex:1}}>
                         {ed.name}
                       </span>
                     )}
                     <button onClick={e=>closeEditor(ed.id,e)} className="btn-hover"
-                      style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:12,lineHeight:1,padding:'0 1px',flexShrink:0,opacity:0.6}}>✕</button>
+                      style={{background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:12,lineHeight:1,padding:'0 1px',flexShrink:0,opacity: ed.id===activeId ? 0.7 : 0.3}}>✕</button>
                   </div>
                 ))}
                 <button onClick={addEditor} title="New editor tab" className="btn-hover"
-                  style={{padding:'0 14px',height:36,background:'none',border:'none',borderRight:`1px solid ${BORDER}`,color:MUTED,cursor:'pointer',fontSize:18,flexShrink:0}}>
+                  style={{padding:'0 12px',height:35,background:'none',border:'none',borderRight:`1px solid ${BORDER}`,color:MUTED,cursor:'pointer',fontSize:16,flexShrink:0}}>
                   +
                 </button>
               </div>
               {/* Toolbar */}
-              <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 14px'}}>
-                <button onClick={run} className="btn-hover" style={{display:'flex',alignItems:'center',gap:6,padding:'5px 14px',background:AMBER,color:BG,border:'none',borderRadius:6,fontWeight:700,fontSize:13,fontFamily:SANS,cursor:'pointer',letterSpacing:'0.02em'}}>
-                  ▶ Run
+              <div style={{display:'flex',alignItems:'center',gap:6,padding:'5px 12px',borderBottom:`1px solid ${BORDER}`}}>
+                <button onClick={run} className="btn-hover" style={{display:'flex',alignItems:'center',gap:5,padding:'4px 12px',background:BLUE,color:'#fff',border:'none',borderRadius:2,fontWeight:600,fontSize:12,fontFamily:SANS,cursor:'pointer',letterSpacing:'0.01em'}}>
+                  ▶  Run
                 </button>
-                <button onClick={()=>setSQL(DEFAULT_SQL)} className="btn-hover" style={{padding:'5px 10px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:6,color:MUTED,fontSize:12,fontFamily:SANS,cursor:'pointer'}}>
-                  ↺ Reset
+                <button onClick={()=>setSQL(DEFAULT_SQL)} className="btn-hover" style={{padding:'4px 10px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:12,fontFamily:SANS,cursor:'pointer'}}>
+                  Reset
                 </button>
-                <button onClick={()=>setSQL('')} className="btn-hover" style={{padding:'5px 10px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:6,color:MUTED,fontSize:12,fontFamily:SANS,cursor:'pointer'}}>
-                  ✕ Clear
+                <button onClick={()=>setSQL('')} className="btn-hover" style={{padding:'4px 10px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:12,fontFamily:SANS,cursor:'pointer'}}>
+                  Clear
                 </button>
                 <button onClick={exportSQL} className="btn-hover" title="Export as .sql file"
-                  style={{padding:'5px 10px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:6,color:MUTED,fontSize:12,fontFamily:SANS,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}>
-                  ⬇ Export .sql
+                  style={{padding:'4px 10px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:12,fontFamily:SANS,cursor:'pointer',display:'flex',alignItems:'center',gap:4}}>
+                  Export .sql
                 </button>
-                <div style={{marginLeft:'auto',fontSize:11,color:MUTED,fontFamily:MONO}}>Ctrl+Enter to run</div>
+                <div style={{marginLeft:'auto',fontSize:11,color:MUTED,fontFamily:MONO,letterSpacing:'0.02em'}}>Ctrl+Enter to run</div>
               </div>
             </div>
 
             {/* Code Editor (flex height = 100% - resultsHeight if open, else 100%) */}
             <div style={{flex: resultsOpen ? `0 0 ${100 - resultsHeight}%` : '1', position:'relative',overflow:'hidden',borderBottom: resultsOpen ? `1px solid ${BORDER}` : 'none'}}>
               {/* Line numbers */}
-              <div ref={lnRef} style={{position:'absolute',left:0,top:0,bottom:0,width:44,background:'#0D1117',borderRight:`1px solid ${BORDER}`,overflowY:'hidden',pointerEvents:'none',zIndex:2}}>
-                <div style={{...edS,padding:'12px 8px 12px 0',color:'#3D4451',textAlign:'right',userSelect:'none',fontSize:'13px'}}>
+              <div ref={lnRef} style={{position:'absolute',left:0,top:0,bottom:0,width:44,background:BG,borderRight:`1px solid ${BORDER}33`,overflowY:'hidden',pointerEvents:'none',zIndex:2}}>
+                <div style={{...edS,padding:'12px 8px 12px 0',color:'#4E4E4E',textAlign:'right',userSelect:'none',fontSize:'13px'}}>
                   {Array.from({length:lineCount},(_,i)=>`${i+1}\n`).join('')}
                 </div>
               </div>
@@ -1011,34 +1405,34 @@ export default function SQLCodelab() {
               <textarea ref={taRef} value={sql} onChange={e=>{ setSQL(e.target.value); computeSuggestions(e.target); }} onScroll={onScroll} onKeyDown={onKeyDown}
                 onBlur={()=>setTimeout(()=>{ setSuggestions([]); setSuggAnchor(null); }, 150)}
                 spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off"
-                style={{...edS,position:'absolute',top:0,left:0,right:0,bottom:0,width:'100%',height:'100%',background:'transparent',color:'transparent',caretColor:AMBER,zIndex:3,overflowY:'auto',overflowX:'auto'}}/>
+                style={{...edS,position:'absolute',top:0,left:0,right:0,bottom:0,width:'100%',height:'100%',background:'transparent',color:'transparent',caretColor:TEXT,zIndex:3,overflowY:'auto',overflowX:'auto'}}/>
               {/* Autocomplete dropdown */}
               {suggestions.length > 0 && suggAnchor && (
                 <div style={{position:'absolute',top:suggAnchor.top,left:Math.min(suggAnchor.left, 'calc(100% - 220px)'),zIndex:20,
-                  background:SURF2,border:`1px solid ${AMBER}55`,borderRadius:7,overflow:'hidden',
-                  boxShadow:'0 8px 24px rgba(0,0,0,0.5)',minWidth:160,maxWidth:240,pointerEvents:'all'}}>
-                  <div style={{padding:'3px 8px 3px',fontSize:9,color:MUTED,fontFamily:MONO,letterSpacing:'0.08em',borderBottom:`1px solid ${BORDER}`,background:SURF,whiteSpace:'nowrap'}}>
-                    SUGGESTIONS &nbsp;<span style={{opacity:0.6}}>↑↓ · Tab accept · Esc</span>
+                  background:SURF2,border:`1px solid ${BORDER}`,borderRadius:2,overflow:'hidden',
+                  boxShadow:'0 4px 16px rgba(0,0,0,0.6)',minWidth:180,maxWidth:260,pointerEvents:'all'}}>
+                  <div style={{padding:'3px 8px',fontSize:10,color:MUTED,fontFamily:MONO,letterSpacing:'0.06em',borderBottom:`1px solid ${BORDER}`,background:SURF,whiteSpace:'nowrap'}}>
+                    SUGGESTIONS &nbsp;<span style={{opacity:0.5}}>↑↓ Tab Esc</span>
                   </div>
-                  <div ref={suggListRef} style={{maxHeight:180,overflowY:'auto',overflowX:'hidden'}}>
+                  <div ref={suggListRef} style={{maxHeight:200,overflowY:'auto',overflowX:'hidden'}}>
                   {suggestions.map((s, i) => {
-                    const kindColor = s.kind==='kw'?'#569CD6':s.kind==='fn'?'#DCDCAA':s.kind==='tbl'?'#3FB950':'#9CDCFE';
-                    const kindLabel = s.kind==='kw'?'KW':s.kind==='fn'?'FN':s.kind==='tbl'?'TBL':'COL';
+                    const kindColor = s.kind==='kw'?ACCENT:s.kind==='fn'?'#DCDCAA':s.kind==='tbl'?GREEN:'#9CDCFE';
+                    const kindLabel = s.kind==='kw'?'kw':s.kind==='fn'?'fn':s.kind==='tbl'?'tbl':'col';
                     return (
                       <div key={i} onMouseDown={e=>{e.preventDefault(); applySuggestion(s.label);}}
                         style={{display:'flex',alignItems:'center',gap:6,padding:'4px 8px',cursor:'pointer',
-                          background: i===suggSel ? AMBER+'22' : 'transparent',
-                          borderLeft: `2px solid ${i===suggSel ? AMBER : 'transparent'}`,
+                          background: i===suggSel ? `${ACCENT}25` : 'transparent',
+                          borderLeft: `2px solid ${i===suggSel ? ACCENT : 'transparent'}`,
                           color: i===suggSel ? TEXT : MUTED}}>
-                        <span style={{fontSize:8,fontFamily:MONO,fontWeight:700,color:kindColor,background:kindColor+'18',
-                          padding:'1px 3px',borderRadius:3,flexShrink:0,minWidth:22,textAlign:'center'}}>
+                        <span style={{fontSize:9,fontFamily:MONO,fontWeight:700,color:kindColor,
+                          padding:'1px 4px',borderRadius:2,flexShrink:0,minWidth:24,textAlign:'center',letterSpacing:'0.03em'}}>
                           {kindLabel}
                         </span>
-                        <span style={{fontFamily:MONO,fontSize:11,flex:1}}>
+                        <span style={{fontFamily:MONO,fontSize:12,flex:1}}>
                           <span style={{color:AMBER,fontWeight:700}}>{s.label.slice(0, suggAnchor.word.length)}</span>
                           {s.label.slice(suggAnchor.word.length)}
                         </span>
-                        {i === suggSel && <span style={{fontSize:9,color:MUTED,flexShrink:0}}>Tab↵</span>}
+                        {i === suggSel && <span style={{fontSize:9,color:MUTED,flexShrink:0}}>Tab</span>}
                       </div>
                     );
                   })}
@@ -1049,10 +1443,10 @@ export default function SQLCodelab() {
 
             {/* Lint Errors */}
             {lintErrors.length>0&&(
-              <div style={{background:'#1A0E0E',borderBottom:`1px solid #5C1A1A`,padding:'6px 16px',flexShrink:0,maxHeight:90,overflowY:'auto'}}>
+              <div style={{background:'#1C1414',borderBottom:`1px solid #5C2020`,padding:'5px 14px',flexShrink:0,maxHeight:90,overflowY:'auto'}}>
                 {lintErrors.map((e,i)=>(
-                  <div key={i} style={{display:'flex',gap:8,alignItems:'flex-start',fontSize:12,fontFamily:MONO,color:'#FF7B7B',lineHeight:'1.6'}}>
-                    <span style={{color:RED,flexShrink:0}}>● ERR</span>
+                  <div key={i} style={{display:'flex',gap:8,alignItems:'flex-start',fontSize:12,fontFamily:MONO,color:'#F48771',lineHeight:'1.6'}}>
+                    <span style={{color:RED,flexShrink:0,fontWeight:700}}>error</span>
                     <span style={{color:MUTED,flexShrink:0}}>L{e.line}</span>
                     <span>{e.msg}</span>
                   </div>
@@ -1069,42 +1463,42 @@ export default function SQLCodelab() {
             {resultsOpen ? (
               <div style={{flex:`0 0 ${resultsHeight}%`,overflow:'hidden',display:'flex',flexDirection:'column',minHeight:0}}>
                 {/* Results Toolbar */}
-                <div style={{display:'flex',alignItems:'center',gap:8,padding:'5px 14px',borderBottom:`1px solid ${BORDER}`,background:SURF,flexShrink:0}}>
-                  <span style={{fontSize:12,fontWeight:600,color:MUTED,letterSpacing:'0.05em',textTransform:'uppercase'}}>Results</span>
+                <div style={{display:'flex',alignItems:'center',gap:8,padding:'4px 12px',borderBottom:`1px solid ${BORDER}`,background:SURF,flexShrink:0}}>
+                  <span style={{fontSize:11,fontWeight:700,color:MUTED,letterSpacing:'0.08em',textTransform:'uppercase',fontFamily:SANS}}>Results</span>
                   {sortedResult&&<>
-                    <span style={{fontSize:11,color:GREEN,fontFamily:MONO,marginLeft:4}}>✓ {sortedResult.rows.length} rows × {sortedResult.cols.length} cols</span>
-                    <div style={{display:'flex',gap:4,marginLeft:'auto'}}>
+                    <span style={{fontSize:11,color:GREEN,fontFamily:MONO,marginLeft:4}}>{sortedResult.rows.length} rows × {sortedResult.cols.length} cols</span>
+                    <div style={{display:'flex',gap:3,marginLeft:'auto'}}>
                       {['table','chart','pie'].map(v=>(
-                        <button key={v} onClick={()=>setResultView(v)} className="btn-hover" style={{padding:'3px 10px',borderRadius:5,border:`1px solid ${resultView===v?AMBER:BORDER}`,background:resultView===v?AMBER+'22':'transparent',color:resultView===v?AMBER:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer'}}>
-                          {v==='table'?'⊞ Table':v==='chart'?'📊 Bar':'◉ Pie'}
+                        <button key={v} onClick={()=>setResultView(v)} className="btn-hover" style={{padding:'2px 10px',borderRadius:2,border:`1px solid ${resultView===v?ACCENT:BORDER}`,background:resultView===v?ACCENT+'22':'transparent',color:resultView===v?ACCENT:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer',letterSpacing:'0.02em'}}>
+                          {v==='table'?'Table':v==='chart'?'Bar Chart':'Pie Chart'}
                         </button>
                       ))}
                     </div>
                   </>}
-                  {execErr&&<span style={{fontSize:12,color:RED,fontFamily:MONO,marginLeft:4}}>✕ Error</span>}
+                  {execErr&&<span style={{fontSize:11,color:RED,fontFamily:MONO,marginLeft:4}}>Error</span>}
                   <button onClick={()=>setResultsOpen(false)} title="Close results" className="btn-hover"
-                    style={{marginLeft: sortedResult ? 8 : 'auto',background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 2px'}}>✕</button>
+                    style={{marginLeft: sortedResult ? 6 : 'auto',background:'none',border:'none',color:MUTED,cursor:'pointer',fontSize:13,lineHeight:1,padding:'0 2px'}}>✕</button>
                 </div>
 
                 {/* Results Content */}
                 <div style={{flex:1,overflow:'auto',padding:'0'}}>
                   {execErr&&(
-                    <div style={{margin:16,padding:12,background:'#1A0E0E',border:`1px solid ${RED}44`,borderRadius:8,fontFamily:MONO,fontSize:13,color:'#FF7B7B'}}>
-                      <span style={{color:RED}}>✕ </span>{execErr}
+                    <div style={{margin:12,padding:10,background:'#1C1414',border:`1px solid ${RED}55`,borderRadius:2,fontFamily:MONO,fontSize:12,color:'#F48771'}}>
+                      <span style={{color:RED,fontWeight:700,marginRight:8}}>error</span>{execErr}
                     </div>
                   )}
                   {messages?.map((m,i)=>(
-                    <div key={i} style={{margin:'8px 16px',padding:'8px 12px',background:'#0D1F0D',border:`1px solid ${GREEN}44`,borderRadius:6,fontFamily:MONO,fontSize:12,color:GREEN}}>{m.msg}</div>
+                    <div key={i} style={{margin:'6px 12px',padding:'6px 10px',background:'#132113',border:`1px solid ${GREEN}44`,borderRadius:2,fontFamily:MONO,fontSize:12,color:GREEN}}>{m.msg}</div>
                   ))}
                   {sortedResult&&resultView==='table'&&(
                     <div style={{overflowX:'auto'}}>
                       <table style={{width:'100%',borderCollapse:'collapse',fontSize:13,fontFamily:MONO}}>
                         <thead>
-                          <tr style={{background:SURF,position:'sticky',top:0,zIndex:5}}>
-                            <th style={{padding:'8px 12px',textAlign:'right',fontWeight:400,color:MUTED,fontSize:11,borderBottom:`2px solid ${AMBER}44`,width:40}}>#</th>
+                          <tr style={{background:SURF2,position:'sticky',top:0,zIndex:5}}>
+                            <th style={{padding:'6px 10px',textAlign:'right',fontWeight:400,color:MUTED,fontSize:11,borderBottom:`1px solid ${BORDER}`,width:36}}>#</th>
                             {sortedResult.cols.map(col=>(
                               <th key={col} onClick={()=>{if(sortCol===col)setSortDir(d=>d==='asc'?'desc':'asc');else{setSortCol(col);setSortDir('asc');}}}
-                                style={{padding:'8px 14px',textAlign:'left',fontWeight:600,color:sortCol===col?AMBER:TEXT,fontSize:12,borderBottom:`2px solid ${sortCol===col?AMBER:BORDER}`,cursor:'pointer',userSelect:'none',whiteSpace:'nowrap'}}>
+                                style={{padding:'6px 12px',textAlign:'left',fontWeight:600,color:sortCol===col?TEXT:MUTED,fontSize:11,borderBottom:`1px solid ${sortCol===col?ACCENT:BORDER}`,cursor:'pointer',userSelect:'none',whiteSpace:'nowrap',letterSpacing:'0.02em'}}>
                                 {col}{sortCol===col?sortDir==='asc'?' ↑':' ↓':''}
                               </th>
                             ))}
@@ -1112,12 +1506,12 @@ export default function SQLCodelab() {
                         </thead>
                         <tbody>
                           {sortedResult.rows.map((row,ri)=>(
-                            <tr key={ri} className="row-hover" style={{borderBottom:`1px solid ${BORDER}22`,background:ri%2?'transparent':'rgba(255,255,255,0.02)'}}>
-                              <td style={{padding:'7px 12px',color:MUTED,textAlign:'right',fontSize:11}}>{ri+1}</td>
+                            <tr key={ri} className="row-hover" style={{borderBottom:`1px solid ${BORDER}22`}}>
+                              <td style={{padding:'5px 10px',color:MUTED,textAlign:'right',fontSize:11,fontFamily:MONO}}>{ri+1}</td>
                               {row.map((cell,ci)=>{
                                 const isNum=cell!==null&&!isNaN(+cell)&&typeof cell!=='string';
                                 return(
-                                  <td key={ci} style={{padding:'7px 14px',color:cell===null?MUTED:isNum?'#B5CEA8':TEXT,fontStyle:cell===null?'italic':'normal',whiteSpace:'nowrap',maxWidth:280,overflow:'hidden',textOverflow:'ellipsis'}}>
+                                  <td key={ci} style={{padding:'5px 12px',color:cell===null?MUTED:isNum?'#B5CEA8':TEXT,fontStyle:cell===null?'italic':'normal',whiteSpace:'nowrap',maxWidth:280,overflow:'hidden',textOverflow:'ellipsis',fontFamily:MONO,fontSize:12}}>
                                     {cell===null?'NULL':String(cell)}
                                   </td>
                                 );
@@ -1159,8 +1553,7 @@ export default function SQLCodelab() {
                     <div style={{padding:32,textAlign:'center',color:MUTED,fontSize:13}}>No numeric columns detected for chart visualization.</div>
                   )}
                   {!results&&!execErr&&(
-                    <div style={{padding:32,textAlign:'center',color:MUTED,fontSize:13}}>
-                      <div style={{fontSize:32,marginBottom:12}}>▶</div>
+                    <div style={{padding:32,textAlign:'center',color:MUTED,fontSize:12,fontFamily:MONO}}>
                       Run a query to see results here
                     </div>
                   )}
@@ -1169,28 +1562,33 @@ export default function SQLCodelab() {
             ) : (
               /* Results closed — show re-open strip */
               <div style={{borderTop:`1px solid ${BORDER}`,background:SURF,padding:'4px 14px',display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
-                <span style={{fontSize:11,color:MUTED,fontFamily:MONO,textTransform:'uppercase',letterSpacing:'0.05em'}}>Results</span>
-                {sortedResult&&<span style={{fontSize:11,color:GREEN,fontFamily:MONO}}>✓ {sortedResult.rows.length} rows</span>}
-                {execErr&&<span style={{fontSize:11,color:RED,fontFamily:MONO}}>✕ Error</span>}
+                <span style={{fontSize:11,color:MUTED,fontFamily:MONO,textTransform:'uppercase',letterSpacing:'0.06em'}}>Results</span>
+                {sortedResult&&<span style={{fontSize:11,color:GREEN,fontFamily:MONO}}>{sortedResult.rows.length} rows</span>}
+                {execErr&&<span style={{fontSize:11,color:RED,fontFamily:MONO}}>Error</span>}
                 <button onClick={()=>setResultsOpen(true)} className="btn-hover"
-                  style={{marginLeft:'auto',padding:'3px 10px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:5,color:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer'}}>
-                  ▲ Show Results
+                  style={{marginLeft:'auto',padding:'2px 10px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer'}}>
+                  Show Results
                 </button>
               </div>
             )}
           </div>
         </div>
+      ) : tab === 'erdiagram' ? (
+        /* ── ER DIAGRAM TAB ── */
+        <ERDiagram schema={schema} schemaVer={schemaVer + folderVer + activeFolderId} />
       ) : (
         /* ── COOKBOOK TAB ── */
         <div style={{display:'flex',flex:1,overflow:'hidden'}}>
           {/* Category Sidebar */}
           <aside style={{width:190,borderRight:`1px solid ${BORDER}`,background:SURF,overflowY:'auto',flexShrink:0}}>
-            <div style={{padding:'10px 12px 6px',fontSize:10,fontWeight:700,letterSpacing:'0.1em',color:MUTED,textTransform:'uppercase'}}>Categories</div>
+            <div style={{padding:'8px 12px 6px',fontSize:10,fontWeight:700,letterSpacing:'0.1em',color:MUTED,textTransform:'uppercase',fontFamily:SANS}}>Categories</div>
             {COOKBOOK.map(cat=>(
               <div key={cat.id} onClick={()=>setCookCat(cat.id)} className="schema-row"
-                style={{display:'flex',alignItems:'center',gap:8,padding:'8px 14px',cursor:'pointer',background:cookCat===cat.id?AMBER+'18':'transparent',borderLeft:`3px solid ${cookCat===cat.id?AMBER:'transparent'}`,transition:'all 0.15s'}}>
-                <span style={{fontSize:14}}>{cat.icon}</span>
-                <span style={{fontSize:12,fontWeight:cookCat===cat.id?600:400,color:cookCat===cat.id?AMBER:TEXT}}>{cat.label}</span>
+                style={{display:'flex',alignItems:'center',gap:8,padding:'7px 14px',cursor:'pointer',
+                  background:cookCat===cat.id?`${ACCENT}18`:'transparent',
+                  borderLeft:`2px solid ${cookCat===cat.id?ACCENT:'transparent'}`,
+                  transition:'all 0.1s'}}>
+                <span style={{fontSize:12,fontWeight:cookCat===cat.id?600:400,color:cookCat===cat.id?TEXT:MUTED,fontFamily:MONO}}>{cat.label}</span>
               </div>
             ))}
           </aside>
@@ -1199,30 +1597,30 @@ export default function SQLCodelab() {
           <div style={{flex:1,overflowY:'auto',padding:20}}>
             {COOKBOOK.filter(c=>c.id===cookCat).map(cat=>(
               <div key={cat.id}>
-                <h2 style={{margin:'0 0 16px',fontSize:18,fontWeight:700,color:TEXT,textAlign:'left'}}>
-                  {cat.icon} {cat.label}
-                  <span style={{marginLeft:10,fontSize:12,fontWeight:400,color:MUTED}}>{cat.items.length} snippets</span>
+                <h2 style={{margin:'0 0 14px',fontSize:15,fontWeight:600,color:TEXT,textAlign:'left',fontFamily:SANS}}>
+                  {cat.label}
+                  <span style={{marginLeft:10,fontSize:11,fontWeight:400,color:MUTED}}>{cat.items.length} snippets</span>
                 </h2>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(380px,1fr))',gap:14}}>
                   {cat.items.map((item,idx)=>(
-                    <div key={idx} className="snippet-card" style={{background:SURF,border:`1px solid ${BORDER}`,borderRadius:10,overflow:'hidden',transition:'border-color 0.15s'}}>
-                      <div style={{padding:'12px 16px 8px',display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                    <div key={idx} className="snippet-card" style={{background:SURF,border:`1px solid ${BORDER}`,borderRadius:2,overflow:'hidden',transition:'border-color 0.12s'}}>
+                      <div style={{padding:'10px 14px 8px',display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
                         <div>
-                          <div style={{fontSize:13,fontWeight:700,color:TEXT,marginBottom:3}}>{item.title}</div>
-                          <div style={{fontSize:11,color:MUTED,lineHeight:'1.4'}}>{item.desc}</div>
+                          <div style={{fontSize:12,fontWeight:600,color:TEXT,marginBottom:3,fontFamily:SANS}}>{item.title}</div>
+                          <div style={{fontSize:11,color:MUTED,lineHeight:'1.4',fontFamily:SANS}}>{item.desc}</div>
                         </div>
-                        <div style={{display:'flex',gap:6,marginLeft:12,flexShrink:0}}>
+                        <div style={{display:'flex',gap:5,marginLeft:12,flexShrink:0}}>
                           <button onClick={()=>copySnippet(item.sql,`${cat.id}-${idx}`)} className="btn-hover"
-                            style={{padding:'4px 10px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:5,color:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer',whiteSpace:'nowrap'}}>
-                            {copiedSnippet===`${cat.id}-${idx}`?'✓ Copied':'⎘ Copy'}
+                            style={{padding:'3px 9px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer',whiteSpace:'nowrap'}}>
+                            {copiedSnippet===`${cat.id}-${idx}`?'Copied':'Copy'}
                           </button>
                           <button onClick={()=>{setSQL(item.sql);setTab('editor');}} className="btn-hover"
-                            style={{padding:'4px 10px',background:AMBER+'22',border:`1px solid ${AMBER}44`,borderRadius:5,color:AMBER,fontSize:11,fontFamily:SANS,cursor:'pointer',whiteSpace:'nowrap'}}>
-                            ▶ Try
+                            style={{padding:'3px 9px',background:BLUE,border:'none',borderRadius:2,color:'#fff',fontSize:11,fontFamily:SANS,cursor:'pointer',whiteSpace:'nowrap'}}>
+                            Run
                           </button>
                         </div>
                       </div>
-                      <pre style={{margin:0,padding:'10px 16px 12px',background:'#0D1117',fontSize:12,fontFamily:MONO,lineHeight:'1.6',overflowX:'auto',color:TEXT,textAlign:'left'}} dangerouslySetInnerHTML={{__html:highlight(item.sql)}}/>
+                      <pre style={{margin:0,padding:'8px 14px 10px',background:BG,fontSize:12,fontFamily:MONO,lineHeight:'1.6',overflowX:'auto',color:TEXT,textAlign:'left'}} dangerouslySetInnerHTML={{__html:highlight(item.sql)}}/>
                     </div>
                   ))}
                 </div>
@@ -1233,11 +1631,16 @@ export default function SQLCodelab() {
       )}
 
       {/* Status Bar */}
-      <div style={{display:'flex',alignItems:'center',gap:16,padding:'0 16px',height:24,background:'#0A0D12',borderTop:`1px solid ${BORDER}`,fontSize:11,fontFamily:MONO,color:MUTED,flexShrink:0}}>
-        <span style={{color:lintErrors.length?RED:GREEN}}>● {lintErrors.length?`${lintErrors.length} error${lintErrors.length>1?'s':''}`:'No errors'}</span>
-        <span>Tables: {Object.keys(schema).length}</span>
-        {sortedResult&&<span style={{color:GREEN}}>Last result: {sortedResult.rows.length} rows</span>}
-        <span style={{marginLeft:'auto'}}>{lineCount} lines · SQL Codelab v1.0 · In-memory engine</span>
+      <div style={{display:'flex',alignItems:'center',gap:0,padding:'0',height:22,background:BLUE,borderTop:'none',fontSize:11,fontFamily:MONO,color:'rgba(255,255,255,0.9)',flexShrink:0}}>
+        <span style={{padding:'0 10px',color: lintErrors.length ? '#FFD2CE' : 'rgba(255,255,255,0.9)',borderRight:'1px solid rgba(255,255,255,0.15)',height:'100%',display:'flex',alignItems:'center',gap:5}}>
+          {lintErrors.length ? `⚠ ${lintErrors.length} problem${lintErrors.length>1?'s':''}` : '✓ No problems'}
+        </span>
+        <span style={{padding:'0 10px',borderRight:'1px solid rgba(255,255,255,0.15)',height:'100%',display:'flex',alignItems:'center'}}>
+          {getActiveFolder()?.name}
+        </span>
+        <span style={{padding:'0 10px',borderRight:'1px solid rgba(255,255,255,0.15)',height:'100%',display:'flex',alignItems:'center'}}>Tables: {Object.keys(schema).length}</span>
+        {sortedResult&&<span style={{padding:'0 10px',height:'100%',display:'flex',alignItems:'center'}}>Last: {sortedResult.rows.length} rows</span>}
+        <span style={{marginLeft:'auto',padding:'0 10px',height:'100%',display:'flex',alignItems:'center',borderLeft:'1px solid rgba(255,255,255,0.15)'}}>{lineCount} lines · SQL · UTF-8</span>
       </div>
     </div>
   );
