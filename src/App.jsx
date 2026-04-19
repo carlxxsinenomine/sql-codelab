@@ -458,6 +458,681 @@ const COOKBOOK = [
 ];
 
 /* ══════════════════════════════════════════════════════════════
+   PRACTICE PROBLEMS
+══════════════════════════════════════════════════════════════ */
+const PRACTICE_PROBLEMS = [
+  {
+    id: 'p1',
+    title: 'Max Salary Per Department',
+    difficulty: 'Hard',
+    category: 'Aggregation',
+    tags: ['JOIN', 'GROUP BY', 'MAX', 'ORDER BY'],
+    description: 'Find the maximum salary in each department. Display the **department name** (not ID) and the maximum salary aliased as `max_salary`. Sort the results by max salary in descending order.\n\nAvailable tables: `employees(id, name, department_id, salary, hire_date)`, `departments(id, name, location)`',
+    hint: 'JOIN employees with departments on `e.department_id = d.id`, then GROUP BY the department name and apply MAX(e.salary). Don\'t forget ORDER BY.',
+    solutionSql: `SELECT d.name AS department, MAX(e.salary) AS max_salary\nFROM employees e\nJOIN departments d ON e.department_id = d.id\nGROUP BY d.name\nORDER BY max_salary DESC;`,
+    check: (rows, cols) => {
+      if (!rows || rows.length === 0) return { ok: false, msg: 'No rows returned. Make sure your query runs without errors.' };
+      if (rows.length !== 5) return { ok: false, msg: `Expected 5 rows (one per department), got ${rows.length}. Check your GROUP BY clause.` };
+      const colsLower = cols.map(c => c.toLowerCase());
+      const hasSalary = colsLower.some(c => c.includes('salary') || c.includes('max'));
+      if (!hasSalary) return { ok: false, msg: 'Missing a salary/max column. Alias it as max_salary.' };
+      const hasDept = colsLower.some(c => c.includes('dept') || c.includes('name') || c.includes('department'));
+      if (!hasDept) return { ok: false, msg: 'Missing a department name column. Make sure you JOIN and select the department name.' };
+      return { ok: true, msg: '✓ Correct! All 5 departments shown with their top salary, ordered highest first.' };
+    }
+  },
+  {
+    id: 'p2',
+    title: 'High-Earning Departments',
+    difficulty: 'Hard',
+    category: 'HAVING',
+    tags: ['JOIN', 'GROUP BY', 'HAVING', 'AVG', 'ROUND'],
+    description: 'List only the departments where the **average salary exceeds $85,000**. For each qualifying department show: department name, average salary rounded to 2 decimals aliased as `avg_salary`, and employee count aliased as `emp_count`. Sort by avg_salary descending.\n\nAvailable tables: `employees`, `departments`',
+    hint: 'Use HAVING AVG(e.salary) > 85000 after GROUP BY d.name. Use ROUND(AVG(e.salary), 2) and COUNT(*) in SELECT.',
+    solutionSql: `SELECT d.name AS department, ROUND(AVG(e.salary), 2) AS avg_salary, COUNT(*) AS emp_count\nFROM employees e\nJOIN departments d ON e.department_id = d.id\nGROUP BY d.name\nHAVING AVG(e.salary) > 85000\nORDER BY avg_salary DESC;`,
+    check: (rows, cols) => {
+      if (!rows || rows.length === 0) return { ok: false, msg: 'No rows returned. Did you forget the HAVING clause?' };
+      if (rows.length !== 2) return { ok: false, msg: `Expected 2 departments (Engineering & Finance), got ${rows.length}. Check your HAVING threshold.` };
+      const colsLower = cols.map(c => c.toLowerCase());
+      const hasAvg = colsLower.some(c => c.includes('avg') || c.includes('salary'));
+      const hasCount = colsLower.some(c => c.includes('count') || c.includes('emp'));
+      if (!hasAvg) return { ok: false, msg: 'Missing avg_salary column.' };
+      if (!hasCount) return { ok: false, msg: 'Missing emp_count column — add COUNT(*) AS emp_count.' };
+      return { ok: true, msg: '✓ Correct! Engineering and Finance are the two departments above $85k average.' };
+    }
+  },
+  {
+    id: 'p3',
+    title: 'Product Revenue Ranking',
+    difficulty: 'Hard',
+    category: 'Multi-Join + HAVING',
+    tags: ['JOIN', 'GROUP BY', 'SUM', 'HAVING', 'ORDER BY'],
+    description: 'Calculate total revenue per product from the orders table. Display product `name`, `category`, and total revenue aliased as `total_revenue`. **Only include products that appear in at least 2 orders.** Sort by total revenue descending.\n\nAvailable tables: `products(id, name, category, price, stock)`, `orders(id, product_id, quantity, total, order_date)`',
+    hint: 'JOIN orders with products on `o.product_id = p.id`. Use SUM(o.total) for revenue, GROUP BY p.name and p.category, then filter with HAVING COUNT(*) >= 2.',
+    solutionSql: `SELECT p.name, p.category, SUM(o.total) AS total_revenue\nFROM orders o\nJOIN products p ON o.product_id = p.id\nGROUP BY p.name, p.category\nHAVING COUNT(*) >= 2\nORDER BY total_revenue DESC;`,
+    check: (rows, cols) => {
+      if (!rows || rows.length === 0) return { ok: false, msg: 'No rows returned. Did you join the tables correctly?' };
+      const colsLower = cols.map(c => c.toLowerCase());
+      const hasRevenue = colsLower.some(c => c.includes('revenue') || c.includes('total') || c.includes('sum'));
+      const hasCategory = colsLower.some(c => c.includes('category') || c.includes('cat'));
+      if (!hasRevenue) return { ok: false, msg: 'Missing total_revenue column — use SUM(o.total) AS total_revenue.' };
+      if (!hasCategory) return { ok: false, msg: 'Missing category column — include p.category in SELECT and GROUP BY.' };
+      if (rows.length > 8) return { ok: false, msg: `Got ${rows.length} rows — too many. Apply HAVING COUNT(*) >= 2 to filter products with fewer than 2 orders.` };
+      return { ok: true, msg: `✓ Correct! Found ${rows.length} products with 2+ orders, ranked by revenue.` };
+    }
+  },
+  {
+    id: 'p4',
+    title: 'Electronics Inventory Value',
+    difficulty: 'Medium',
+    category: 'Computed Columns',
+    tags: ['WHERE', 'Expressions', 'ROUND', 'ORDER BY'],
+    description: 'For the **Electronics category only**, calculate the total inventory value for each product as `price × stock`. Display: `name`, `price`, `stock`, and inventory value aliased as `inventory_value` (rounded to 2 decimals). Sort by inventory_value descending.\n\nAvailable table: `products(id, name, category, price, stock)`',
+    hint: "Filter with WHERE category = 'Electronics'. Use ROUND(price * stock, 2) AS inventory_value in SELECT.",
+    solutionSql: `SELECT name, price, stock, ROUND(price * stock, 2) AS inventory_value\nFROM products\nWHERE category = 'Electronics'\nORDER BY inventory_value DESC;`,
+    check: (rows, cols) => {
+      if (!rows || rows.length === 0) return { ok: false, msg: "No rows returned. Check your WHERE category = 'Electronics' filter." };
+      if (rows.length !== 4) return { ok: false, msg: `Expected 4 Electronics products, got ${rows.length}.` };
+      const colsLower = cols.map(c => c.toLowerCase());
+      const hasValue = colsLower.some(c => c.includes('value') || c.includes('inventory'));
+      if (!hasValue) return { ok: false, msg: 'Missing inventory_value column — alias your computed column.' };
+      return { ok: true, msg: '✓ Correct! All 4 Electronics products shown with calculated inventory values.' };
+    }
+  },
+  {
+    id: 'p5',
+    title: 'Top 3 Highest-Value Orders',
+    difficulty: 'Hard',
+    category: 'Ranking',
+    tags: ['JOIN', 'ORDER BY', 'LIMIT'],
+    description: 'Find the **top 3 individual orders** by total value. Display: order `id` aliased as `order_id`, product `name` aliased as `product`, `quantity`, and order `total`. Show exactly 3 rows — the three most expensive orders.\n\nAvailable tables: `orders`, `products`',
+    hint: 'JOIN orders with products on o.product_id = p.id. No GROUP BY needed — you want individual rows. Use ORDER BY o.total DESC LIMIT 3.',
+    solutionSql: `SELECT o.id AS order_id, p.name AS product, o.quantity, o.total\nFROM orders o\nJOIN products p ON o.product_id = p.id\nORDER BY o.total DESC\nLIMIT 3;`,
+    check: (rows, cols) => {
+      if (!rows || rows.length === 0) return { ok: false, msg: 'No rows returned.' };
+      if (rows.length !== 3) return { ok: false, msg: `Expected exactly 3 rows, got ${rows.length}. Add LIMIT 3 and ORDER BY total DESC.` };
+      const colsLower = cols.map(c => c.toLowerCase());
+      const hasProduct = colsLower.some(c => c.includes('product') || c.includes('name'));
+      if (!hasProduct) return { ok: false, msg: 'Missing product name column — JOIN with products to get the name.' };
+      return { ok: true, msg: '✓ Correct! The 3 highest-value orders retrieved with product details.' };
+    }
+  },
+  {
+    id: 'p6',
+    title: 'Department Headcount & Budget',
+    difficulty: 'Hard',
+    category: 'Full Aggregation',
+    tags: ['JOIN', 'GROUP BY', 'HAVING', 'COUNT', 'SUM', 'AVG'],
+    description: 'For each department with **more than 1 employee**, calculate: headcount aliased as `headcount`, total salary budget aliased as `total_budget`, and average salary aliased as `avg_salary` (rounded to 0 decimals). Show the department **name**. Sort by total_budget descending.\n\nAvailable tables: `employees`, `departments`',
+    hint: 'JOIN employees with departments, GROUP BY d.name, then HAVING COUNT(*) > 1. Use COUNT(*), SUM(e.salary), ROUND(AVG(e.salary), 0).',
+    solutionSql: `SELECT d.name AS department, COUNT(*) AS headcount, SUM(e.salary) AS total_budget, ROUND(AVG(e.salary), 0) AS avg_salary\nFROM employees e\nJOIN departments d ON e.department_id = d.id\nGROUP BY d.name\nHAVING COUNT(*) > 1\nORDER BY total_budget DESC;`,
+    check: (rows, cols) => {
+      if (!rows || rows.length === 0) return { ok: false, msg: 'No rows returned. Check your JOIN and GROUP BY.' };
+      const colsLower = cols.map(c => c.toLowerCase());
+      const hasCount = colsLower.some(c => c.includes('count') || c.includes('head'));
+      const hasBudget = colsLower.some(c => c.includes('budget') || c.includes('sum') || c.includes('total'));
+      const hasAvg = colsLower.some(c => c.includes('avg') || c.includes('salary'));
+      if (!hasCount) return { ok: false, msg: 'Missing headcount — add COUNT(*) AS headcount.' };
+      if (!hasBudget) return { ok: false, msg: 'Missing total_budget — add SUM(e.salary) AS total_budget.' };
+      if (!hasAvg) return { ok: false, msg: 'Missing avg_salary — add ROUND(AVG(e.salary), 0) AS avg_salary.' };
+      if (rows.length < 2) return { ok: false, msg: `Only ${rows.length} row — check your HAVING COUNT(*) > 1 filter.` };
+      return { ok: true, msg: `✓ Correct! ${rows.length} departments shown with full headcount and salary breakdown.` };
+    }
+  },
+  {
+    id: 'p7',
+    title: 'Category Sales Summary',
+    difficulty: 'Hard',
+    category: 'Multi-Join Analytics',
+    tags: ['JOIN', 'GROUP BY', 'SUM', 'COUNT', 'AVG'],
+    description: 'Summarize sales by product category. For each category show: `category`, total number of orders aliased as `order_count`, total units sold (sum of quantity) aliased as `units_sold`, and total revenue aliased as `revenue`. Sort by revenue descending.\n\nAvailable tables: `products`, `orders`',
+    hint: 'JOIN orders with products on o.product_id = p.id. GROUP BY p.category. Use COUNT(*), SUM(o.quantity), SUM(o.total).',
+    solutionSql: `SELECT p.category, COUNT(*) AS order_count, SUM(o.quantity) AS units_sold, SUM(o.total) AS revenue\nFROM orders o\nJOIN products p ON o.product_id = p.id\nGROUP BY p.category\nORDER BY revenue DESC;`,
+    check: (rows, cols) => {
+      if (!rows || rows.length === 0) return { ok: false, msg: 'No rows returned.' };
+      const colsLower = cols.map(c => c.toLowerCase());
+      const hasCat = colsLower.some(c => c.includes('category') || c.includes('cat'));
+      const hasUnits = colsLower.some(c => c.includes('unit') || c.includes('quantity') || c.includes('qty'));
+      const hasRevenue = colsLower.some(c => c.includes('revenue') || c.includes('total'));
+      const hasCount = colsLower.some(c => c.includes('count') || c.includes('order'));
+      if (!hasCat) return { ok: false, msg: 'Missing category column.' };
+      if (!hasUnits) return { ok: false, msg: 'Missing units_sold — use SUM(o.quantity) AS units_sold.' };
+      if (!hasRevenue) return { ok: false, msg: 'Missing revenue — use SUM(o.total) AS revenue.' };
+      if (!hasCount) return { ok: false, msg: 'Missing order_count — use COUNT(*) AS order_count.' };
+      return { ok: true, msg: `✓ Correct! ${rows.length} categories summarized by orders, units, and revenue.` };
+    }
+  },
+  {
+    id: 'p8',
+    title: 'Employees Hired in 2020',
+    difficulty: 'Medium',
+    category: 'String Filtering',
+    tags: ['WHERE', 'LIKE', 'JOIN', 'ORDER BY'],
+    description: 'List all employees who were hired in **2020**. Display employee `name`, department `name` aliased as `department`, `salary`, and `hire_date`. Sort by hire_date ascending.\n\nHint: hire_date is stored as a string like `"2020-03-15"`. Use LIKE to match the year.\n\nAvailable tables: `employees`, `departments`',
+    hint: "Filter with WHERE e.hire_date LIKE '2020%' to match all dates starting with 2020. JOIN with departments to get the department name.",
+    solutionSql: `SELECT e.name, d.name AS department, e.salary, e.hire_date\nFROM employees e\nJOIN departments d ON e.department_id = d.id\nWHERE e.hire_date LIKE '2020%'\nORDER BY e.hire_date ASC;`,
+    check: (rows, cols) => {
+      if (!rows || rows.length === 0) return { ok: false, msg: "No rows returned. Try WHERE e.hire_date LIKE '2020%'." };
+      if (rows.length !== 3) return { ok: false, msg: `Expected 3 employees hired in 2020, got ${rows.length}. Check your LIKE pattern.` };
+      const colsLower = cols.map(c => c.toLowerCase());
+      const hasDate = colsLower.some(c => c.includes('date') || c.includes('hire'));
+      const hasDept = colsLower.some(c => c.includes('dept') || c.includes('department') || c.includes('name'));
+      if (!hasDate) return { ok: false, msg: 'Include the hire_date column in your results.' };
+      if (!hasDept) return { ok: false, msg: 'Missing department name — JOIN with departments.' };
+      return { ok: true, msg: '✓ Correct! 3 employees hired in 2020: Alice, Grace, and Jake.' };
+    }
+  },
+];
+
+/* ══════════════════════════════════════════════════════════════
+   PRACTICE TAB COMPONENT
+══════════════════════════════════════════════════════════════ */
+function PracticeTab({ activeDb, isMobile }) {
+  const [selectedId, setSelectedId] = useState(PRACTICE_PROBLEMS[0].id);
+  const [userSql, setUserSql] = useState('-- Write your SQL here\n\n');
+  const [result, setResult]     = useState(null);
+  const [execError, setExecError] = useState(null);
+  const [checkResult, setCheckResult] = useState(null);
+  const [showHint, setShowHint]       = useState(false);
+  const [showSolution, setShowSolution] = useState(false);
+  const [completed, setCompleted] = useState(new Set());
+  const [listOpen, setListOpen]   = useState(true);
+
+  // Autocomplete state
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggSel, setSuggSel]         = useState(0);
+  const [suggAnchor, setSuggAnchor]   = useState(null);
+
+  const taRef       = useRef(null);
+  const hlRef       = useRef(null);
+  const lnRef       = useRef(null);
+  const suggListRef = useRef(null);
+
+  const problem = PRACTICE_PROBLEMS.find(p => p.id === selectedId);
+
+  // Reset when switching problems
+  useEffect(() => {
+    setUserSql('-- Write your SQL here\n\n');
+    setResult(null);
+    setExecError(null);
+    setCheckResult(null);
+    setShowHint(false);
+    setShowSolution(false);
+    setSuggestions([]);
+    setSuggAnchor(null);
+  }, [selectedId]);
+
+  // Autocomplete pool — all keywords + table/col names from the DB
+  const suggPool = useMemo(() => {
+    const tables = activeDb?.tables || {};
+    const kws  = [...SQL_KW].map(k => ({ label: k, kind: 'kw' }));
+    const fns  = [...SQL_FN].map(f => ({ label: f, kind: 'fn' }));
+    const tbls = Object.keys(tables).map(t => ({ label: t, kind: 'tbl' }));
+    const seen = new Set();
+    const cols = Object.values(tables).flatMap(t =>
+      t.cols.filter(c => { if (seen.has(c)) return false; seen.add(c); return true; })
+            .map(c => ({ label: c, kind: 'col' }))
+    );
+    return [...kws, ...fns, ...tbls, ...cols];
+  }, [activeDb]);
+
+  function computeSuggestions(ta) {
+    const pos  = ta.selectionStart;
+    const text = ta.value;
+    let start  = pos;
+    while (start > 0 && /\w/.test(text[start - 1])) start--;
+    const word = text.slice(start, pos);
+    if (word.length < 1) { setSuggestions([]); setSuggAnchor(null); return; }
+    const wu = word.toUpperCase();
+    const matches = suggPool
+      .filter(s => s.label.toUpperCase().startsWith(wu) && s.label.toUpperCase() !== wu)
+      .slice(0, 20);
+    if (!matches.length) { setSuggestions([]); setSuggAnchor(null); return; }
+    const before   = text.slice(0, start);
+    const lineIdx  = text.slice(0, pos).split('\n').length - 1;
+    const colInLine = before.split('\n')[before.split('\n').length - 1].length;
+    const LINE_H   = 13 * 1.65;
+    const CHAR_W   = 7.82;
+    const PAD_TOP  = 12;
+    const PAD_LEFT = 60;
+    const top  = PAD_TOP + (lineIdx + 1) * LINE_H - (ta.scrollTop || 0);
+    const left = PAD_LEFT + colInLine * CHAR_W;
+    setSuggestions(matches);
+    setSuggSel(0);
+    setSuggAnchor({ top, left, wordStart: start, word });
+  }
+
+  function applySuggestion(label) {
+    const ta = taRef.current;
+    if (!ta || !suggAnchor) return;
+    const cursorPos = ta.selectionStart;
+    const before = userSql.slice(0, suggAnchor.wordStart);
+    const after  = userSql.slice(cursorPos);
+    const newSql = before + label + after;
+    setUserSql(newSql);
+    const newPos = suggAnchor.wordStart + label.length;
+    requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = newPos; ta.focus(); });
+    setSuggestions([]); setSuggAnchor(null);
+  }
+
+  const onScroll = useCallback(() => {
+    if (hlRef.current && taRef.current) {
+      hlRef.current.scrollTop = taRef.current.scrollTop;
+      hlRef.current.scrollLeft = taRef.current.scrollLeft;
+    }
+    if (lnRef.current && taRef.current) {
+      lnRef.current.scrollTop = taRef.current.scrollTop;
+    }
+  }, []);
+
+  const runQuery = useCallback(() => {
+    setSuggestions([]); setSuggAnchor(null);
+    try {
+      const res  = activeDb.run(userSql);
+      const last = res[res.length - 1];
+      setResult(last);
+      setExecError(null);
+      setCheckResult(null);
+    } catch(e) {
+      setExecError(e.message);
+      setResult(null);
+    }
+  }, [activeDb, userSql]);
+
+  const checkAnswer = () => {
+    if (!result) { setCheckResult({ ok: false, msg: 'Run your query first before checking.' }); return; }
+    const cr = problem.check(result.rows, result.cols);
+    setCheckResult(cr);
+    if (cr.ok) setCompleted(c => new Set([...c, selectedId]));
+  };
+
+  const onKeyDown = useCallback((e) => {
+    // Suggestions navigation
+    if (suggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSuggSel(s => { const n = Math.min(s+1, suggestions.length-1); requestAnimationFrame(()=>{ suggListRef.current?.children[n]?.scrollIntoView({block:'nearest'}); }); return n; });
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSuggSel(s => { const n = Math.max(s-1, 0); requestAnimationFrame(()=>{ suggListRef.current?.children[n]?.scrollIntoView({block:'nearest'}); }); return n; });
+        return;
+      }
+      if (e.key === 'Escape') { e.preventDefault(); setSuggestions([]); setSuggAnchor(null); return; }
+      if (e.key === 'Tab' || e.key === 'Enter') { e.preventDefault(); applySuggestion(suggestions[suggSel].label); return; }
+    }
+    // Ctrl+Enter → run
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); runQuery(); return; }
+    // Tab → 2-space indent
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const ta = taRef.current;
+      const s = ta.selectionStart, en = ta.selectionEnd;
+      const nv = userSql.slice(0, s) + '  ' + userSql.slice(en);
+      setUserSql(nv);
+      requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s + 2; });
+    }
+    // Auto-indent on Enter
+    if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      const ta = taRef.current;
+      const s = ta.selectionStart, en = ta.selectionEnd;
+      const beforeCursor = userSql.slice(0, s);
+      const lines = beforeCursor.split('\n');
+      const currentLine = lines[lines.length - 1];
+      const indentMatch = currentLine.match(/^(\s*)/);
+      const currentIndent = indentMatch ? indentMatch[1] : '';
+      let openCount = 0, closeCount = 0;
+      for (const ch of currentLine) {
+        if (['(','[','{'].includes(ch)) openCount++;
+        if ([')',']','}'].includes(ch)) closeCount++;
+      }
+      const newIndent = currentIndent + (openCount > closeCount ? '  ' : '');
+      const nv = userSql.slice(0, s) + '\n' + newIndent + userSql.slice(en);
+      setUserSql(nv);
+      requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s + 1 + newIndent.length; });
+    }
+    // Smart bracket deletion
+    const closingMap = { '(': ')', '[': ']', '{': '}' };
+    const findMatchingClosing = (text, openPos, openBracket) => {
+      const closeBracket = closingMap[openBracket];
+      let depth = 1;
+      for (let i = openPos + 1; i < text.length; i++) {
+        if (text[i] === openBracket) depth++;
+        if (text[i] === closeBracket) { depth--; if (depth === 0) return i; }
+      }
+      return -1;
+    };
+    if (e.key === 'Backspace') {
+      const ta = taRef.current;
+      const s = ta.selectionStart;
+      const charBefore = userSql[s - 1];
+      if (['(','[','{'].includes(charBefore)) {
+        const matchingPos = findMatchingClosing(userSql, s - 1, charBefore);
+        if (matchingPos !== -1) {
+          e.preventDefault();
+          const nv = userSql.slice(0, s - 1) + userSql.slice(s, matchingPos) + userSql.slice(matchingPos + 1);
+          setUserSql(nv);
+          requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s - 1; });
+          return;
+        }
+      }
+    }
+    if (e.key === 'Delete') {
+      const ta = taRef.current;
+      const s = ta.selectionStart;
+      const charAt = userSql[s];
+      if (['(','[','{'].includes(charAt)) {
+        const matchingPos = findMatchingClosing(userSql, s, charAt);
+        if (matchingPos !== -1) {
+          e.preventDefault();
+          const nv = userSql.slice(0, s) + userSql.slice(s + 1, matchingPos) + userSql.slice(matchingPos + 1);
+          setUserSql(nv);
+          requestAnimationFrame(() => { taRef.current.selectionStart = taRef.current.selectionEnd = s; });
+          return;
+        }
+      }
+    }
+    // Skip over matching closing bracket
+    if ([')',']','}'].includes(e.key)) {
+      const ta = taRef.current;
+      const s = ta.selectionStart;
+      if (userSql[s] === e.key) {
+        e.preventDefault();
+        requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s + 1; });
+        return;
+      }
+    }
+    // Auto-close brackets
+    if (['(','[','{'].includes(e.key)) {
+      e.preventDefault();
+      const ta = taRef.current;
+      const s = ta.selectionStart, en = ta.selectionEnd;
+      const closing = closingMap[e.key];
+      const selectedText = userSql.slice(s, en);
+      const nv = userSql.slice(0, s) + e.key + selectedText + closing + userSql.slice(en);
+      setUserSql(nv);
+      requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = s + 1; });
+    }
+  }, [userSql, suggestions, suggSel, suggAnchor, runQuery]);
+
+  const diffColor = d => d === 'Hard' ? RED : d === 'Medium' ? AMBER : GREEN;
+
+  const edS = {
+    fontFamily: MONO, fontSize: '13px', lineHeight: '1.65',
+    padding: '12px 16px 12px 60px', tabSize: 2,
+    whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+    textAlign: 'left', letterSpacing: 'normal',
+  };
+
+  const highlighted = useMemo(() => highlight(userSql), [userSql]);
+  const lineCount   = useMemo(() => userSql.split('\n').length, [userSql]);
+
+  return (
+    <div style={{display:'flex',flex:1,overflow:'hidden',flexDirection:isMobile?'column':'row'}}>
+
+      {/* ── Problem List Sidebar ── */}
+      {(!isMobile || listOpen) && (
+        <aside style={{width:isMobile?'100%':220,maxHeight:isMobile?220:'none',borderRight:isMobile?'none':`1px solid ${BORDER}`,borderBottom:isMobile?`1px solid ${BORDER}`:'none',background:SURF,display:'flex',flexDirection:'column',overflow:'hidden',flexShrink:0}}>
+          <div style={{padding:'0 12px',height:35,display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:`1px solid ${BORDER}`,flexShrink:0}}>
+            <span style={{fontSize:10,fontWeight:700,letterSpacing:'0.1em',color:MUTED,textTransform:'uppercase',fontFamily:SANS}}>
+              Problems &nbsp;<span style={{color:GREEN}}>{completed.size}/{PRACTICE_PROBLEMS.length}</span>
+            </span>
+            {isMobile && <button onClick={()=>setListOpen(false)} style={{background:'transparent',border:'none',color:MUTED,cursor:'pointer',fontSize:13}}>✕</button>}
+          </div>
+          <div style={{overflowY:'auto',flex:1}}>
+            {PRACTICE_PROBLEMS.map((p, i) => (
+              <div key={p.id} onClick={()=>{ setSelectedId(p.id); if(isMobile)setListOpen(false); }}
+                className="schema-row"
+                style={{padding:'9px 12px',cursor:'pointer',borderLeft:`2px solid ${selectedId===p.id?ACCENT:'transparent'}`,background:selectedId===p.id?`${ACCENT}15`:'transparent',transition:'background 0.1s',borderBottom:`1px solid ${BORDER}22`}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
+                  <span style={{fontSize:10,fontFamily:MONO,fontWeight:600,color:completed.has(p.id)?GREEN:MUTED,minWidth:16,textAlign:'left'}}>{completed.has(p.id)?'✓':`${i+1}.`}</span>
+                  <span style={{fontSize:11,fontFamily:SANS,fontWeight:600,color:TEXT,flex:1,lineHeight:'1.3',textAlign:'left'}}>{p.title}</span>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:5,paddingLeft:22}}>
+                  <span style={{fontSize:9,fontFamily:MONO,fontWeight:700,color:diffColor(p.difficulty),padding:'1px 5px',border:`1px solid ${diffColor(p.difficulty)}44`,borderRadius:2}}>{p.difficulty}</span>
+                  <span style={{fontSize:9,fontFamily:SANS,color:MUTED,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.category}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
+      )}
+
+      {/* ── Main Practice Area ── */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
+
+        {/* Problem Header bar */}
+        <div style={{padding:'0 16px',height:35,display:'flex',alignItems:'center',gap:8,borderBottom:`1px solid ${BORDER}`,background:SURF,flexShrink:0,flexWrap:'wrap'}}>
+          {isMobile && !listOpen && (
+            <button onClick={()=>setListOpen(true)} className="btn-hover"
+              style={{padding:'3px 8px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer'}}>
+              Problems
+            </button>
+          )}
+          <span style={{fontSize:13,fontWeight:700,color:TEXT,fontFamily:SANS}}>{problem.title}</span>
+          <span style={{fontSize:9,fontFamily:MONO,fontWeight:700,color:diffColor(problem.difficulty),padding:'2px 7px',border:`1px solid ${diffColor(problem.difficulty)}55`,borderRadius:2}}>{problem.difficulty}</span>
+          {completed.has(problem.id) && <span style={{fontSize:11,color:GREEN,fontFamily:MONO,fontWeight:600}}>Solved</span>}
+          <div style={{marginLeft:'auto',display:'flex',gap:4,flexWrap:'wrap'}}>
+            {problem.tags.map(tag=>(
+              <span key={tag} style={{fontSize:9,fontFamily:MONO,color:MUTED,padding:'1px 6px',background:SURF2,borderRadius:2,border:`1px solid ${BORDER}`}}>{tag}</span>
+            ))}
+          </div>
+        </div>
+
+        <div style={{flex:1,display:'flex',flexDirection:isMobile?'column':'row',overflow:'hidden'}}>
+
+          {/* ── Left: Description + Editor + Results ── */}
+          <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',minWidth:0}}>
+
+            {/* Description panel */}
+            <div style={{padding:'10px 16px',borderBottom:`1px solid ${BORDER}`,background:BG,flexShrink:0,maxHeight:isMobile?130:170,overflowY:'auto'}}>
+              {problem.description.split('\n').map((line, i) => {
+                const parts = line.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
+                return (
+                  <p key={i} style={{margin:'0 0 5px',fontSize:12,fontFamily:SANS,color:TEXT,lineHeight:'1.6',textAlign:'left'}}>
+                    {parts.map((pt, j) => {
+                      if (pt.startsWith('**') && pt.endsWith('**')) return <strong key={j} style={{color:ACCENT}}>{pt.slice(2,-2)}</strong>;
+                      if (pt.startsWith('`') && pt.endsWith('`')) return <code key={j} style={{fontFamily:MONO,fontSize:11,color:AMBER,background:SURF2,padding:'1px 4px',borderRadius:2}}>{pt.slice(1,-1)}</code>;
+                      return pt;
+                    })}
+                  </p>
+                );
+              })}
+            </div>
+
+            {/* Editor toolbar */}
+            <div style={{display:'flex',alignItems:'center',gap:6,padding:'5px 12px',borderBottom:`1px solid ${BORDER}`,background:SURF,flexShrink:0}}>
+              <span style={{fontSize:10,fontWeight:700,color:MUTED,fontFamily:SANS,textTransform:'uppercase',letterSpacing:'0.08em'}}>SQL Editor</span>
+              <span style={{fontSize:10,color:MUTED,fontFamily:MONO,marginLeft:4}}>{lineCount} lines</span>
+              <div style={{marginLeft:'auto',display:'flex',gap:6,alignItems:'center'}}>
+                <span style={{fontSize:10,color:MUTED,fontFamily:MONO}}>Ctrl+Enter to run</span>
+                <button onClick={()=>{ setUserSql('-- Write your SQL here\n\n'); setSuggestions([]); }} className="btn-hover"
+                  style={{padding:'3px 9px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer'}}>Clear</button>
+                <button onClick={runQuery} className="btn-hover"
+                  style={{padding:'3px 12px',background:BLUE,color:'#fff',border:'none',borderRadius:2,fontWeight:600,fontSize:11,fontFamily:SANS,cursor:'pointer'}}>&#9654; Run</button>
+                <button onClick={checkAnswer} className="btn-hover"
+                  style={{padding:'3px 12px',background:GREEN,color:'#111',border:'none',borderRadius:2,fontWeight:600,fontSize:11,fontFamily:SANS,cursor:'pointer'}}>Check</button>
+              </div>
+            </div>
+
+            {/* Code Editor area */}
+            <div style={{flex:1,position:'relative',overflow:'hidden',minHeight:isMobile?110:0}}>
+              {/* Line numbers */}
+              <div ref={lnRef} style={{position:'absolute',left:0,top:0,bottom:0,width:44,background:BG,borderRight:`1px solid ${BORDER}22`,overflowY:'hidden',pointerEvents:'none',zIndex:2}}>
+                <div style={{...edS,padding:'12px 8px 12px 0',color:'#4E4E4E',textAlign:'right',userSelect:'none',fontSize:'13px'}}>
+                  {Array.from({length:lineCount},(_,i)=>`${i+1}\n`).join('')}
+                </div>
+              </div>
+              {/* Highlight overlay */}
+              <pre ref={hlRef} aria-hidden
+                style={{...edS,position:'absolute',top:0,left:0,right:0,bottom:0,margin:0,overflow:'hidden',pointerEvents:'none',zIndex:1,color:TEXT,background:BG}}
+                dangerouslySetInnerHTML={{__html:highlighted+'<br/>'}}/>
+              {/* Textarea */}
+              <textarea ref={taRef} value={userSql}
+                onChange={e=>{ setUserSql(e.target.value); computeSuggestions(e.target); }}
+                onScroll={onScroll}
+                onKeyDown={onKeyDown}
+                onBlur={()=>setTimeout(()=>{ setSuggestions([]); setSuggAnchor(null); }, 150)}
+                spellCheck={false} autoComplete="off" autoCorrect="off" autoCapitalize="off"
+                style={{...edS,position:'absolute',top:0,left:0,right:0,bottom:0,width:'100%',height:'100%',background:'transparent',color:'transparent',caretColor:TEXT,zIndex:3,overflowY:'auto',overflowX:'auto',resize:'none',outline:'none',border:'none'}}/>
+              {/* Autocomplete dropdown */}
+              {suggestions.length > 0 && suggAnchor && (
+                <div style={{position:'absolute',top:suggAnchor.top,left:Math.min(suggAnchor.left, 'calc(100% - 220px)'),zIndex:20,
+                  background:SURF2,border:`1px solid ${BORDER}`,borderRadius:2,overflow:'hidden',
+                  boxShadow:'0 4px 16px rgba(0,0,0,0.5)',minWidth:180,maxWidth:260,pointerEvents:'all'}}>
+                  <div style={{padding:'3px 8px',fontSize:10,color:MUTED,fontFamily:MONO,letterSpacing:'0.06em',borderBottom:`1px solid ${BORDER}`,background:SURF,whiteSpace:'nowrap'}}>
+                    SUGGESTIONS &nbsp;<span style={{opacity:0.5}}>&#x2191;&#x2193; Tab Esc</span>
+                  </div>
+                  <div ref={suggListRef} style={{maxHeight:200,overflowY:'auto',overflowX:'hidden'}}>
+                    {suggestions.map((s, i) => {
+                      const kindColor = s.kind==='kw'?ACCENT:s.kind==='fn'?'#DCDCAA':s.kind==='tbl'?GREEN:'#9CDCFE';
+                      const kindLabel = s.kind==='kw'?'kw':s.kind==='fn'?'fn':s.kind==='tbl'?'tbl':'col';
+                      return (
+                        <div key={i} onMouseDown={e2=>{e2.preventDefault(); applySuggestion(s.label);}}
+                          style={{display:'flex',alignItems:'center',gap:6,padding:'4px 8px',cursor:'pointer',
+                            background: i===suggSel ? `${ACCENT}22` : 'transparent',
+                            borderLeft: `2px solid ${i===suggSel ? ACCENT : 'transparent'}`,
+                            color: i===suggSel ? TEXT : MUTED}}>
+                          <span style={{fontSize:9,fontFamily:MONO,fontWeight:700,color:kindColor,padding:'1px 4px',borderRadius:2,flexShrink:0,minWidth:24,textAlign:'center'}}>{kindLabel}</span>
+                          <span style={{fontFamily:MONO,fontSize:12,flex:1,textAlign:'left'}}>
+                            <span style={{color:ACCENT,fontWeight:700}}>{s.label.slice(0, suggAnchor.word.length)}</span>
+                            {s.label.slice(suggAnchor.word.length)}
+                          </span>
+                          {i === suggSel && <span style={{fontSize:9,color:MUTED,flexShrink:0}}>Tab</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Check result banner */}
+            {checkResult && (
+              <div style={{padding:'7px 14px',borderTop:`1px solid ${BORDER}`,background:checkResult.ok?'#1a2e1a':'#2e1a1a',flexShrink:0,display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:11,fontFamily:MONO,fontWeight:700,color:checkResult.ok?GREEN:RED}}>{checkResult.ok?'PASS':'FAIL'}</span>
+                <span style={{fontSize:11,fontFamily:MONO,color:checkResult.ok?GREEN:RED}}>{checkResult.msg}</span>
+              </div>
+            )}
+
+            {/* Exec error banner */}
+            {execError && (
+              <div style={{padding:'7px 14px',borderTop:`1px solid #5C2020`,background:'#1C1414',flexShrink:0}}>
+                <span style={{fontSize:11,fontFamily:MONO,color:RED,textAlign:'left',display:'block'}}>Error: {execError}</span>
+              </div>
+            )}
+
+            {/* Results table */}
+            {result && result.cols && (
+              <div style={{borderTop:`1px solid ${BORDER}`,flex:'0 0 auto',maxHeight:190,overflowY:'auto',overflowX:'auto',flexShrink:0}}>
+                <div style={{padding:'4px 12px 3px',fontSize:10,fontWeight:700,color:MUTED,fontFamily:SANS,textTransform:'uppercase',letterSpacing:'0.08em',borderBottom:`1px solid ${BORDER}`,background:SURF,display:'flex',alignItems:'center',gap:8}}>
+                  <span>Results</span>
+                  <span style={{color:GREEN,fontFamily:MONO,fontSize:11}}>{result.rows.length} rows</span>
+                </div>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,fontFamily:MONO}}>
+                  <thead>
+                    <tr>
+                      {result.cols.map(col=>(
+                        <th key={col} style={{padding:'4px 10px',textAlign:'left',fontSize:10,fontWeight:700,color:ACCENT,textTransform:'uppercase',letterSpacing:'0.06em',borderBottom:`1px solid ${BORDER}`,background:SURF2,whiteSpace:'nowrap'}}>
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.rows.slice(0,50).map((row,ri)=>(
+                      <tr key={ri} className="row-hover" style={{borderBottom:`1px solid ${BORDER}22`,background:ri%2===0?'transparent':'rgba(255,255,255,0.02)'}}>
+                        {row.map((cell,ci)=>(
+                          <td key={ci} style={{padding:'4px 10px',color:cell==null?MUTED:typeof cell==='number'?GREEN:TEXT,whiteSpace:'nowrap',maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',textAlign:'left'}}>
+                            {cell==null?<span style={{fontStyle:'italic',color:MUTED}}>NULL</span>:String(cell)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* ── Right panel: Hint + Solution + Schema + Nav ── */}
+          <div style={{width:isMobile?'100%':240,borderLeft:isMobile?'none':`1px solid ${BORDER}`,borderTop:isMobile?`1px solid ${BORDER}`:'none',background:SURF,display:'flex',flexDirection:'column',overflow:'hidden',flexShrink:0}}>
+
+            {/* Hint */}
+            <div style={{borderBottom:`1px solid ${BORDER}`,flexShrink:0}}>
+              <button onClick={()=>setShowHint(h=>!h)} className="btn-hover"
+                style={{width:'100%',padding:'8px 14px',background:'transparent',border:'none',display:'flex',alignItems:'center',gap:8,cursor:'pointer',textAlign:'left'}}>
+                <span style={{fontSize:12,color:MUTED}}>{showHint?'▾':'▸'}</span>
+                <span style={{fontSize:11,fontWeight:700,color:AMBER,fontFamily:SANS}}>Hint</span>
+              </button>
+              {showHint && (
+                <div style={{padding:'6px 14px 12px',borderTop:`1px solid ${BORDER}22`}}>
+                  <p style={{margin:0,fontSize:11,fontFamily:SANS,color:TEXT,lineHeight:'1.6',textAlign:'left'}}>{problem.hint}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Solution */}
+            <div style={{borderBottom:`1px solid ${BORDER}`,flexShrink:0}}>
+              <button onClick={()=>setShowSolution(s=>!s)} className="btn-hover"
+                style={{width:'100%',padding:'8px 14px',background:'transparent',border:'none',display:'flex',alignItems:'center',gap:8,cursor:'pointer',textAlign:'left'}}>
+                <span style={{fontSize:12,color:MUTED}}>{showSolution?'▾':'▸'}</span>
+                <span style={{fontSize:11,fontWeight:700,color:MUTED,fontFamily:SANS}}>Show Solution</span>
+              </button>
+              {showSolution && (
+                <div style={{borderTop:`1px solid ${BORDER}22`}}>
+                  <div style={{padding:'4px 8px',display:'flex',justifyContent:'flex-end'}}>
+                    <button onClick={()=>setUserSql(problem.solutionSql)} className="btn-hover"
+                      style={{padding:'2px 8px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:10,fontFamily:SANS,cursor:'pointer'}}>Use in Editor</button>
+                  </div>
+                  <pre style={{margin:0,padding:'4px 12px 12px',background:BG,fontSize:10,fontFamily:MONO,lineHeight:'1.65',overflowX:'auto',color:TEXT,textAlign:'left'}} dangerouslySetInnerHTML={{__html:highlight(problem.solutionSql)}}/>
+                </div>
+              )}
+            </div>
+
+            {/* Schema reference */}
+            <div style={{flex:1,overflowY:'auto'}}>
+              <div style={{padding:'8px 14px 4px',fontSize:10,fontWeight:700,color:MUTED,textTransform:'uppercase',letterSpacing:'0.08em',fontFamily:SANS,textAlign:'left'}}>Schema Reference</div>
+              {[
+                {name:'employees',  cols:['id','name','department_id','salary','hire_date']},
+                {name:'departments',cols:['id','name','location']},
+                {name:'products',   cols:['id','name','category','price','stock']},
+                {name:'orders',     cols:['id','product_id','quantity','total','order_date']},
+              ].map(tbl=>(
+                <div key={tbl.name} style={{padding:'4px 14px 8px'}}>
+                  <div style={{fontSize:11,fontFamily:MONO,fontWeight:600,color:ACCENT,marginBottom:3,textAlign:'left'}}>{tbl.name}</div>
+                  {tbl.cols.map(col=>(
+                    <div key={col} style={{fontSize:10,fontFamily:MONO,color:MUTED,paddingLeft:10,lineHeight:'1.7',textAlign:'left'}}>— {col}</div>
+                  ))}
+                </div>
+              ))}
+            </div>
+
+            {/* Prev / Next navigation */}
+            <div style={{padding:'8px 10px',borderTop:`1px solid ${BORDER}`,display:'flex',justifyContent:'space-between',alignItems:'center',flexShrink:0}}>
+              {(() => {
+                const idx  = PRACTICE_PROBLEMS.findIndex(p => p.id === selectedId);
+                const prev = PRACTICE_PROBLEMS[idx - 1];
+                const next = PRACTICE_PROBLEMS[idx + 1];
+                return (<>
+                  <button onClick={()=>prev&&setSelectedId(prev.id)} disabled={!prev} className="btn-hover"
+                    style={{padding:'4px 10px',background:'transparent',border:`1px solid ${prev?BORDER:'transparent'}`,borderRadius:2,color:prev?MUTED:BORDER,fontSize:11,fontFamily:SANS,cursor:prev?'pointer':'default'}}>&#8592; Prev</button>
+                  <span style={{fontSize:10,color:MUTED,fontFamily:MONO}}>{idx+1}/{PRACTICE_PROBLEMS.length}</span>
+                  <button onClick={()=>next&&setSelectedId(next.id)} disabled={!next} className="btn-hover"
+                    style={{padding:'4px 10px',background:'transparent',border:`1px solid ${next?BORDER:'transparent'}`,borderRadius:2,color:next?MUTED:BORDER,fontSize:11,fontFamily:SANS,cursor:next?'pointer':'default'}}>Next &#8594;</button>
+                </>);
+              })()}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
    THEME — declared here so ERDiagram & all components can use them
 ══════════════════════════════════════════════════════════════ */
 const MONO = "'JetBrains Mono','Cascadia Code','Fira Code','Consolas','Courier New',monospace";
@@ -670,8 +1345,8 @@ function ERDiagram({ schema, schemaVer }) {
                   <span style={{ fontSize: 9, color: colColor, lineHeight: 1, flexShrink: 0, fontFamily: MONO, fontWeight: 700, minWidth: 16 }}>
                     {isPK ? 'PK' : isFK ? 'FK' : ''}
                   </span>
-                  <span style={{ fontSize: 11, fontFamily: MONO, color: isPK ? ACCENT : isFK ? (relColors[col] || ACCENT) : TEXT, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{col}</span>
-                  <span style={{ fontSize: 10, fontFamily: MONO, color: MUTED, flexShrink: 0 }}>{colType}</span>
+                  <span style={{ fontSize: 11, fontFamily: MONO, color: isPK ? ACCENT : isFK ? (relColors[col] || ACCENT) : TEXT, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{col}</span>
+                  <span style={{ fontSize: 10, fontFamily: MONO, color: MUTED, flexShrink: 0, textAlign: 'right' }}>{colType}</span>
                 </div>
               );
             })}
@@ -1006,6 +1681,15 @@ export default function SQLCodelab() {
 
   const [resultView, setResultView] = useState('table');
   const [cookCat, setCookCat] = useState('basics');
+  const [cookSidebarOpen, setCookSidebarOpen] = useState(true);
+
+  // ── Mobile detection ──
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   const [schemaVer, setSchemaVer] = useState(0);
   const [expandedTbls, setExpandedTbls] = useState(new Set(['employees','departments']));
   const [sortCol, setSortCol] = useState(null);
@@ -1444,7 +2128,7 @@ export default function SQLCodelab() {
           <span style={{fontFamily:MONO,fontSize:12,fontWeight:600,color:TEXT}}>SQL Codelab</span>
         </div>
         <div style={{display:'flex',height:'100%'}}>
-          {[{id:'editor',label:'Editor'},{id:'tablebuilder',label:'Table Builder'},{id:'cookbook',label:'Cookbook'},{id:'erdiagram',label:'ER Diagram'}].map(t=>(
+          {[{id:'editor',label:'Editor'},{id:'tablebuilder',label:'Table Builder'},{id:'cookbook',label:'Cookbook'},{id:'erdiagram',label:'ER Diagram'},{id:'practice',label:'Practice'}].map(t=>(
             <button key={t.id} onClick={()=>setTab(t.id)} className="btn-hover" style={{
               padding:'0 16px', border:'none', height:'100%',
               background: tab===t.id ? BG : 'transparent',
@@ -1835,36 +2519,57 @@ export default function SQLCodelab() {
       ) : tab === 'erdiagram' ? (
         /* ── ER DIAGRAM TAB ── */
         <ERDiagram schema={schema} schemaVer={schemaVer + folderVer + activeFolderId} />
+      ) : tab === 'practice' ? (
+        /* ── PRACTICE TAB ── */
+        <PracticeTab activeDb={activeDb} isMobile={isMobile} />
       ) : (
         /* ── COOKBOOK TAB ── */
-        <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+        <div style={{display:'flex',flex:1,overflow:'hidden',flexDirection:isMobile?'column':'row'}}>
           {/* Category Sidebar */}
-          <aside style={{width:190,borderRight:`1px solid ${BORDER}`,background:SURF,overflowY:'auto',flexShrink:0}}>
-            <div style={{padding:'8px 12px 6px',fontSize:10,fontWeight:700,letterSpacing:'0.1em',color:MUTED,textTransform:'uppercase',fontFamily:SANS}}>Categories</div>
-            {COOKBOOK.map(cat=>(
-              <div key={cat.id} onClick={()=>setCookCat(cat.id)} className="schema-row"
-                style={{display:'flex',alignItems:'center',gap:8,padding:'7px 14px',cursor:'pointer',
-                  background:cookCat===cat.id?`${ACCENT}18`:'transparent',
-                  borderLeft:`2px solid ${cookCat===cat.id?ACCENT:'transparent'}`,
-                  transition:'background 0.1s'}}>
-                <span style={{fontSize:12,fontFamily:MONO,fontWeight:cookCat===cat.id?600:400,color:cookCat===cat.id?TEXT:MUTED}}>{cat.label}</span>
+          {(!isMobile||cookSidebarOpen)&&(
+            <aside style={{width:isMobile?'100%':190,maxHeight:isMobile?200:'none',borderRight:isMobile?'none':`1px solid ${BORDER}`,borderBottom:isMobile?`1px solid ${BORDER}`:'none',background:SURF,overflowY:'auto',flexShrink:0}}>
+              <div style={{padding:'8px 12px 6px',fontSize:10,fontWeight:700,letterSpacing:'0.1em',color:MUTED,textTransform:'uppercase',fontFamily:SANS,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                <span>Categories</span>
+                {isMobile&&<button onClick={()=>setCookSidebarOpen(false)} style={{background:'transparent',border:'none',color:MUTED,cursor:'pointer',fontSize:14,lineHeight:1,padding:'0 2px'}}>✕</button>}
               </div>
-            ))}
-          </aside>
+              <div style={{display:'flex',flexDirection:isMobile?'row':'column',flexWrap:isMobile?'wrap':'nowrap',gap:isMobile?2:0,padding:isMobile?'4px 8px 8px':0}}>
+                {COOKBOOK.map(cat=>(
+                  <div key={cat.id} onClick={()=>{setCookCat(cat.id);if(isMobile)setCookSidebarOpen(false);}} className="schema-row"
+                    style={{display:'flex',alignItems:'center',gap:8,padding:isMobile?'5px 10px':'7px 14px',cursor:'pointer',
+                      background:cookCat===cat.id?`${ACCENT}18`:'transparent',
+                      borderLeft:isMobile?'none':`2px solid ${cookCat===cat.id?ACCENT:'transparent'}`,
+                      borderRadius:isMobile?3:0,
+                      border:isMobile?`1px solid ${cookCat===cat.id?ACCENT:BORDER}`:undefined,
+                      transition:'background 0.1s'}}>
+                    <span style={{fontSize:12,fontFamily:MONO,fontWeight:cookCat===cat.id?600:400,color:cookCat===cat.id?TEXT:MUTED}}>{cat.label}</span>
+                  </div>
+                ))}
+              </div>
+            </aside>
+          )}
 
           {/* Snippet Grid */}
-          <div style={{flex:1,overflowY:'auto',padding:20}}>
+          <div style={{flex:1,overflowY:'auto',padding:isMobile?12:20}}>
+            {isMobile&&!cookSidebarOpen&&(
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+                <button onClick={()=>setCookSidebarOpen(true)} className="btn-hover"
+                  style={{padding:'4px 10px',background:'transparent',border:`1px solid ${BORDER}`,borderRadius:2,color:MUTED,fontSize:11,fontFamily:SANS,cursor:'pointer'}}>
+                  ☰ Categories
+                </button>
+                <span style={{fontSize:12,color:TEXT,fontFamily:MONO,fontWeight:600}}>{COOKBOOK.find(c=>c.id===cookCat)?.label}</span>
+              </div>
+            )}
             {COOKBOOK.filter(c=>c.id===cookCat).map(cat=>(
               <div key={cat.id}>
                 <h2 style={{margin:'0 0 14px',fontSize:14,fontWeight:600,color:TEXT,textAlign:'left',fontFamily:SANS,letterSpacing:'0.01em'}}>
                   {cat.label}
                   <span style={{marginLeft:10,fontSize:11,fontWeight:400,color:MUTED}}>{cat.items.length} snippets</span>
                 </h2>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(380px,1fr))',gap:14}}>
+                <div style={{display:'grid',gridTemplateColumns:`repeat(auto-fill,minmax(${isMobile?'260px':'380px'},1fr))`,gap:isMobile?10:14}}>
                   {cat.items.map((item,idx)=>(
                     <div key={idx} className="snippet-card" style={{background:SURF,border:`1px solid ${BORDER}`,borderRadius:2,overflow:'hidden',transition:'border-color 0.12s'}}>
                       <div style={{padding:'10px 14px 8px',display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-                        <div>
+                        <div style={{minWidth:0,flex:1}}>
                           <div style={{fontSize:12,fontWeight:600,color:TEXT,marginBottom:3,fontFamily:SANS}}>{item.title}</div>
                           <div style={{fontSize:11,color:MUTED,lineHeight:'1.4',fontFamily:SANS}}>{item.desc}</div>
                         </div>
@@ -1879,7 +2584,7 @@ export default function SQLCodelab() {
                           </button>
                         </div>
                       </div>
-                      <pre style={{margin:0,padding:'8px 14px 10px',background:BG,fontSize:12,fontFamily:MONO,lineHeight:'1.6',overflowX:'auto',color:TEXT,textAlign:'left'}} dangerouslySetInnerHTML={{__html:highlight(item.sql)}}/>
+                      <pre style={{margin:0,padding:'8px 14px 10px',background:BG,fontSize:isMobile?11:12,fontFamily:MONO,lineHeight:'1.6',overflowX:'auto',color:TEXT,textAlign:'left'}} dangerouslySetInnerHTML={{__html:highlight(item.sql)}}/>
                     </div>
                   ))}
                 </div>
